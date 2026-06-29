@@ -1,0 +1,61 @@
+# BrowseComp-Plus benchmark — dynamic swarm with a Snowflake Cortex Search corpus.
+# Replaces live web search/fetch with queries against a static ~100K document corpus.
+# Usage: arcticswarm-eval --config conf/bench/browsecomp_plus_high.yaml eval.output=results/browsecomp_plus
+
+tools:
+  agent: [read_file, calculator, web_search, web_fetch, python_execute, load_skill]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research-corpus, tool-usage-policy-browsing-corpus]
+  profiles:
+    browsing:
+      tools: [read_file, calculator, web_search, web_fetch]
+      skills: [web-research-corpus, tool-usage-policy-browsing-corpus]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+swarm:
+  enabled: true
+  profiles: [browsing, reasoning]
+  auditor_reasoning_effort: high
+  enable_force_submit: false
+
+web:
+  enabled: true
+  provider: corpus
+  # Corpus retrieval backend: stub (default; no real retrieval) | cortex | local.
+  # The BrowseComp-Plus numbers in the paper used Snowflake Cortex Search
+  # whose coordinates would be supplied (commented) below. To reproduce against
+  # such a service, set corpus_backend: cortex and fill in the placeholders
+  # (needs a PAT in ~/.snowflake/connections.toml [default]). To plug your own
+  # search service, set corpus_backend: local and corpus_local_path to a corpus JSONL.
+  corpus_backend: stub
+  # corpus_backend: cortex
+  # corpus_account: <your-account>
+  # corpus_db: <db>
+  # corpus_schema: <schema>
+  # corpus_chunked_service: <chunked-service>
+  # corpus_service: <service>
+  no_fetch: false
+  fetch_backend: corpus
+  disable_source_scorer: false
+  # Cap a single web_fetch/pdf_read result to ~5k tokens (~20K chars) so one
+  # tool turn can't overflow context.
+  max_tool_output_tokens: 5000
+
+llm:
+  max_turns: 1200
+  reasoning_effort: high
+  max_tool_calls_per_turn: 1
+
+azure:
+  enabled: false
+
+eval:
+  # public OpenAI GPT-4.1 judge; needs OPENAI_API_KEY in config_files.json (or set azure.enabled + your Azure deployment)
+  judge_model: openai-gpt-4.1
+  csv_path: arcticswarm/eval/data/browsecomp_plus_subset_representative.csv
+  datasets: [BROWSECOMP_PLUS_V1]
+  parallel: 18
+  timeout: 6000
+  checkpoint_interval: 1

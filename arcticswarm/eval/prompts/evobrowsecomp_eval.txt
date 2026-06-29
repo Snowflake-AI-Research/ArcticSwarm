@@ -1,0 +1,16 @@
+You are a general artificial intelligence assistant.
+Based on the [Correct Answer] provided below, judge whether the [Response] to the [Original Question] below is correct.
+
+[Original Question]: {question}
+
+[Correct Answer]: {correct_answer}
+
+[Response]: {response}
+
+Your judgment must follow the following format and standards:
+
+Final Answer: The final accurate answer extracted from the [Response]. If there is no clear final answer in the [Response], fill in 'None'.
+
+Explanation: Explain why the [Final Answer] is correct or incorrect based on the [Correct Answer]. Only focus on whether there is a substantial difference between the [Final Answer] and the [Correct Answer]; do not comment on the background of the question, do not attempt to re-solve the problem, do not defend any answer different from the [Correct Answer], and only focus on judging whether the answers are consistent.
+
+Conclusion: If the [Final Answer] is consistent with the [Correct Answer] provided above, or within an acceptable small error range for numerical questions, fill in 'Correct'; otherwise (i.e., in case of any inconsistency, ambiguity, inequivalence, or incorrect extracted answer), fill in 'Incorrect'.

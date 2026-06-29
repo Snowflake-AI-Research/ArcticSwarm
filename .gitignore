@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.env/
+
+# Local virtualenv (if created in-tree as `arcticswarm/`)
+arcticswarm/bin/
+arcticswarm/lib/
+arcticswarm/include/
+arcticswarm/pyvenv.cfg
+
+# Eval run outputs
+results/
+arcticswarm/results/
+
+# Content / search caches — never commit cache DBs or run caches
+cache/
+fetch_cache/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Settings file — never commit real secrets; only the template is tracked
+config_files.json
+
+# Benchmark datasets are regenerated locally via scripts/fetch_datasets.sh
+# (we ship loaders + CONV_ID specs under eval/data/subset_specs/, not the
+# questions/answers themselves). Regenerate them; don't commit them.
+/arcticswarm/eval/data/*.csv
+
+# Local investigation / scratch dirs — never commit
+.invest_0628/
+scripts/alttask_scan.py
