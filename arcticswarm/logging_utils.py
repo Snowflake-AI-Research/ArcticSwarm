@@ -171,6 +171,7 @@ def capture_git_snapshot(
     snapshot["commit"] = _run(["git", "rev-parse", "HEAD"])
     snapshot["commit_short"] = _run(["git", "rev-parse", "--short", "HEAD"])
     snapshot["commit_message"] = _run(["git", "log", "-1", "--pretty=%B"])
+    snapshot["commit_author"] = _run(["git", "log", "-1", "--pretty=%an <%ae>"])
     snapshot["commit_date"] = _run(["git", "log", "-1", "--pretty=%ci"])
 
     # Dirty state — staged + unstaged diffs for tracked files

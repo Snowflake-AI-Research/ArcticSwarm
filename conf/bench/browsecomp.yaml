@@ -44,8 +44,7 @@ eval:
   parallel: 18
   timeout: 9000
   checkpoint_interval: 1
-  # public OpenAI GPT-4.1 judge; needs OPENAI_API_KEY in config_files.json (or set azure.enabled + your Azure deployment)
-  judge_model: openai-gpt-4.1
+  judge_model: gpt-4-1-dev
   gated_retry: false
   max_retries: 2
 

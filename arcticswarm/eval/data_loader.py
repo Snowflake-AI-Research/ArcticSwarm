@@ -1,12 +1,11 @@
-"""Load and parse eval cases from a benchmark CSV.
+"""Load and parse eval cases from unified_eval.csv.
 
-Reads the eval CSV and converts rows into :class:`EvalCase` dataclass
-instances, with filtering by dataset, VIP status, eval mode, and row limit.
+Reads the CSV used by the Go eval pipeline and converts rows into
+:class:`EvalCase` dataclass instances, with filtering by dataset,
+VIP status, eval mode, and row limit.
 
-The CSV is one row per case with columns for the conversation id, turn index,
-question text, reference answer, and JSON-encoded fields for tools, tool
-resources, and attributes. Pass the CSV explicitly with ``eval.csv_path=...``;
-otherwise the bundled BrowseComp CSV under ``data/`` is used.
+Pass the CSV explicitly with ``eval.csv_path=...``; otherwise the bundled
+BrowseComp CSV under ``data/`` is used.
 """
 
 from __future__ import annotations
@@ -35,12 +34,7 @@ def resolve_default_csv() -> Path:
     """Return the bundled default eval CSV (BrowseComp).
 
     Most runs pass ``eval.csv_path=...`` explicitly; this is only the
-    fallback default, resolved from the CSVs under ``data/``.
-
-    The repo no longer ships benchmark CSVs (they contain gold answers and are
-    regenerated from their public sources). If none are present, raise a clear
-    error pointing the user at ``scripts/fetch_datasets.sh`` (or at setting
-    ``eval.csv_path`` to their own CSV).
+    fallback default, resolved from the committed CSVs under ``data/``.
     """
     for name in ("browsecomp_v1.csv", "browsecomp_plus_v1.csv"):
         cand = _DATA_DIR / name
@@ -50,10 +44,7 @@ def resolve_default_csv() -> Path:
     if matches:
         return matches[0]
     raise FileNotFoundError(
-        f"No default eval CSV found in {_DATA_DIR}. "
-        "The repo no longer ships benchmark CSVs — regenerate them with "
-        "`bash scripts/fetch_datasets.sh`, or point at your own dataset with "
-        "`eval.csv_path=path/to/my_dataset.csv` (see docs/custom_evaluation.md)."
+        f"No default eval CSV found in {_DATA_DIR}. Pass eval.csv_path explicitly."
     )
 
 
@@ -64,7 +55,7 @@ def resolve_default_csv() -> Path:
 
 @dataclass
 class EvalCase:
-    """A single evaluation case parsed from the benchmark CSV."""
+    """A single evaluation case parsed from unified_eval.csv."""
 
     conv_id: str
     turn_index: int
@@ -203,17 +194,7 @@ def _parse_row(row: dict[str, str]) -> EvalCase | None:
 
 
 def _resolve_eval_csv_path(csv_path: str | Path | None, datasets: list[str] | None) -> Path:
-    """Resolve the eval CSV path (explicit path, custom datasets, or bundled default).
-
-    Raises a clear :class:`FileNotFoundError` when the path can't be opened:
-      * an explicit ``eval.csv_path`` that doesn't exist points the user at
-        their config / ``scripts/fetch_datasets.sh``;
-      * no ``csv_path`` and no bundled default CSV defers to
-        :func:`resolve_default_csv`'s fetch-datasets guidance.
-    """
-    # Remember whether the user passed an explicit path so the "missing file"
-    # error can name *their* path rather than a default we substituted in.
-    explicit_csv_path = csv_path
+    """Resolve the eval CSV path (explicit path, custom datasets, or bundled default)."""
     if csv_path is None:
         if datasets:
             from arcticswarm.eval.custom_datasets import is_custom_dataset, resolve_custom_csv
@@ -225,9 +206,6 @@ def _resolve_eval_csv_path(csv_path: str | Path | None, datasets: list[str] | No
                     csv_path = custom_path
 
         if csv_path is None:
-            # No explicit path and no custom-dataset CSV: fall back to the
-            # bundled default, which raises its own fetch-datasets error when
-            # the repo ships no CSVs.
             csv_path = resolve_default_csv()
     path = Path(csv_path)
     if not path.is_absolute():
@@ -240,13 +218,6 @@ def _resolve_eval_csv_path(csv_path: str | Path | None, datasets: list[str] | No
                 candidate = candidate.parent
 
     if not path.exists():
-        if explicit_csv_path is not None:
-            raise FileNotFoundError(
-                f"eval.csv_path points at a CSV that does not exist: {explicit_csv_path!r} "
-                f"(resolved to {path}). Check the path in your config, or regenerate the "
-                "bundled benchmark CSVs with `bash scripts/fetch_datasets.sh`. "
-                "To evaluate your own data, see docs/custom_evaluation.md."
-            )
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
     return path
 
@@ -261,7 +232,7 @@ def _load_cases_from_unified_csv(
     conv_id: str | None,
     offset: int = 0,
 ) -> list[EvalCase]:
-    """Read the benchmark CSV at *path* and apply the usual filters.
+    """Read unified_eval CSV at *path* and apply the usual filters.
 
     ``offset`` skips the first N matching cases (after dataset / vip / mode
     filtering) before counting toward ``limit``. The skip is applied stream

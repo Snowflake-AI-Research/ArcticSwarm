@@ -20,7 +20,8 @@ self-hosted Qwen 3.5), see the top-level [`README.md`](../../README.md).
 ```bash
 arcticswarm-eval -c conf/bench/browsecomp.yaml \
   llm.model=claude-sonnet-4-5 \
-  eval.judge_model=openai-gpt-4.1 \
+  azure.enabled=true \
+  eval.judge_model=gpt-4-1-dev \
   eval.output=results/bc_sonnet45
 ```
 
@@ -30,11 +31,11 @@ at another file). See the top-level README for the key layout. Public
 Anthropic / OpenAI endpoints are the default.
 
 > The eval judge runs after each question and never sees or alters the agent
-> trajectory. We standardize on the public OpenAI GPT-4.1 judge
-> (`eval.judge_model=openai-gpt-4.1`), which needs `OPENAI_API_KEY` in
-> `config_files.json`. An Azure-hosted deployment (`azure.enabled=true` plus
-> your Azure deployment id), a Claude, or a self-hosted judge also works
-> (e.g. `azure.enabled=false eval.judge_model=claude-sonnet-4-5`).
+> trajectory. We standardize on the Azure-hosted GPT-4.1 deployment
+> (`azure.enabled=true eval.judge_model=gpt-4-1-dev`), which needs
+> `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_ENDPOINT` in `config_files.json`. A
+> Claude or self-hosted judge also works (`azure.enabled=false
+> eval.judge_model=claude-sonnet-4-5`).
 
 ---
 
@@ -68,7 +69,7 @@ python -m arcticswarm.eval.data.external.evobrowsecomp \
 | `eval.timeout=S`           | per-case wall-clock budget |
 | `eval.max_retries=N`       | retries on transient errors |
 | `eval.checkpoint_interval` | flush partial results every N cases (resumable) |
-| `eval.judge_model`         | judge model id (standard: `openai-gpt-4.1` with `OPENAI_API_KEY`; also `claude-sonnet-4-5`, `gpt-5`) |
+| `eval.judge_model`         | judge model id (standard: `gpt-4-1-dev` with `azure.enabled=true`; also `claude-sonnet-4-5`, `gpt-5`) |
 | `eval.judge_model_base_url`| judge endpoint (e.g. a self-hosted vLLM judge) |
 
 Self-hosted judges/agents (Qwen via vLLM) are configured with

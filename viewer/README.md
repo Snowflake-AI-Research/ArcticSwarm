@@ -6,12 +6,12 @@ A small FastAPI + static-JS web app for browsing arcticswarm eval results: per-q
 
 ```bash
 # from the repo root
-python viewer/server.py results/<run_dir> --port 8502
+python viewer/server.py results/0304_browsecomp_swarm_v2 --port 8502
 ```
 
-Then open `http://localhost:8502` (the server also opens it for you unless `--no-browser` is set). By default the viewer is **local-only** — it binds to `127.0.0.1` and starts no public tunnel.
+Then open `http://localhost:8502` (the server also opens it for you unless `--no-browser` is set).
 
-If you want to share the viewer remotely and `cloudflared` is installed, pass `--tunnel`: the server then **also starts a Cloudflare quick tunnel** and prints a public `https://*.trycloudflare.com` URL you can share with anyone — no auth required, no firewall changes needed:
+If `cloudflared` is installed, the server **also starts a Cloudflare quick tunnel by default** and prints a public `https://*.trycloudflare.com` URL you can share with anyone — no auth required, no firewall changes needed:
 
 ```
 ========================================================================
@@ -31,12 +31,12 @@ python viewer/server.py <run_dir> [options]
   --port PORT        Local port (default: 8502)
   --host HOST        Local bind host (default: 127.0.0.1)
   --no-browser       Don't auto-open a browser tab
-  --tunnel           Expose a public URL via a Cloudflare quick tunnel (off by default)
+  --no-tunnel        Don't start the Cloudflare quick tunnel
 ```
 
 ## Cloudflare quick tunnels
 
-`server.py` shells out to `cloudflared tunnel --url http://localhost:<port>` when you pass `--tunnel`. This uses Cloudflare's free quick-tunnel service: every run gets a fresh random `*.trycloudflare.com` hostname, so URLs are not stable across restarts.
+`server.py` shells out to `cloudflared tunnel --url http://localhost:<port>`. This uses Cloudflare's free quick-tunnel service: every run gets a fresh random `*.trycloudflare.com` hostname, so URLs are not stable across restarts.
 
 ### One-time setup
 
@@ -44,7 +44,7 @@ python viewer/server.py <run_dir> [options]
 brew install cloudflared
 ```
 
-If `cloudflared` is not on `PATH`, passing `--tunnel` prints a one-line warning and the server continues to serve locally — it does not fail.
+If `cloudflared` is not on `PATH`, the server prints a one-line warning and continues to serve locally — it does not fail.
 
 ### Sharing tips
 
@@ -57,26 +57,26 @@ If `cloudflared` is not on `PATH`, passing `--tunnel` prints a one-line warning 
 Browse a single run:
 
 ```bash
-python viewer/server.py results/<run_dir> --port 8502
+python viewer/server.py results/0304_browsecomp_swarm_v2 --port 8502
 ```
 
-Run two viewers side-by-side on different ports (each gets its own public URL when `--tunnel` is passed):
+Run two viewers side-by-side on different ports (each gets its own public URL):
 
 ```bash
-python viewer/server.py results/<run_dir_a> --port 8502 &
-python viewer/server.py results/<run_dir_b> --port 8503 &
+python viewer/server.py results/0304_browsecomp_swarm_v1 --port 8502 &
+python viewer/server.py results/0304_browsecomp_swarm_v2 --port 8503 &
 ```
 
-Run on a remote box without auto-opening a browser, and expose a public URL:
+Run on a remote box without auto-opening a browser, just print the public URL:
 
 ```bash
-python viewer/server.py results/<run_dir> --port 8502 --no-browser --tunnel
+python viewer/server.py results/<run> --port 8502 --no-browser
 ```
 
-Local-only (the default — no public tunnel):
+Local-only, no public tunnel:
 
 ```bash
-python viewer/server.py results/<run_dir> --port 8502
+python viewer/server.py results/<run> --port 8502 --no-tunnel
 ```
 
 ## Layout

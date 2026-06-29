@@ -215,6 +215,10 @@ class ToolFactory:
         tavily_key = getattr(self.config, "tavily_api_key", "")
         serper_key = self.config.serper_api_key
         from arcticswarm.tools.web_search import WebSearchTool
+        _search_cache = None
+        if getattr(self.config, "enable_search_cache", False) and getattr(self.config, "search_cache_db", ""):
+            from arcticswarm.tools.search_cache import get_search_cache
+            _search_cache = get_search_cache(self.config.search_cache_db)
         return WebSearchTool(
             self.config.brave_api_key,
             serper_api_key=serper_key,
@@ -227,6 +231,8 @@ class ToolFactory:
             ),
             hard_stop=getattr(self.config, "search_repeat_guard_hard_stop", True),
             neardup_hard_stop=getattr(self.config, "search_neardup_hard_stop", 40),
+            search_cache=_search_cache,
+            search_cache_read=getattr(self.config, "search_cache_read", True),
         )
 
     def _make_web_fetch(self) -> BaseTool | None:

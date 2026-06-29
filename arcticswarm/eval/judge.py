@@ -1,10 +1,10 @@
 """LLM judge for evaluating agent responses.
 
 Supports these evaluation modes:
-  - **QA**: binary correct/incorrect — the judge decides whether the agent's
-    answer matches the reference answer.
+  - **QA**: Binary correct/incorrect (matches the Go ``qa_eval.tmpl``).
   - **Answer-Only**: 0/1/2 rating focusing purely on the final answer
-    correctness, ignoring methodology and tool usage.
+    correctness, ignoring methodology and tool usage (matches the Go
+    ``answer_only_eval.tmpl``).
   - **BrowseComp / BrowseComp-Plus / EvoBrowseComp**: dataset-specific
     correctness graders.
 """
@@ -82,8 +82,7 @@ class InsightJudgeResult:
 class FlexJudgeResult:
     """Result from FLEX mode evaluation (4 independent metrics).
 
-    Captures the judge's per-metric quality scores along with the
-    pre-analysis metadata extracted from its reasoning.
+    Mirrors Go's ``QualityScoreResult`` (``llm_judge.go:251-271``).
     """
 
     # Pre-analysis metadata (extracted from judge reasoning)
@@ -132,7 +131,6 @@ class LLMJudge:
         model: str = _DEFAULT_JUDGE_MODEL,
         use_azure_openai: bool = False,
         judge_base_url: str = "",
-        custom_judge_prompt: str = "",
     ) -> None:
         self.model = model
         # ``judge_base_url`` => self-hosted OpenAI-compatible endpoint (vLLM).
@@ -181,20 +179,6 @@ class LLMJudge:
         self._browsecomp_plus_prompt = (_PROMPTS_DIR / "browsecomp_plus_eval.txt").read_text()
         self._evobrowsecomp_prompt = (_PROMPTS_DIR / "evobrowsecomp_eval.txt").read_text()
 
-        # Optional user-supplied custom judge rubric. When set, ``judge_custom``
-        # is used for every case (see ``data_loader``/``cli`` wiring). The
-        # template is read once at construction so a bad path fails fast.
-        self.custom_judge_prompt = ""
-        if custom_judge_prompt:
-            template_path = Path(custom_judge_prompt)
-            if not template_path.exists():
-                raise FileNotFoundError(
-                    f"Custom judge prompt template not found: {custom_judge_prompt!r}. "
-                    "Set eval.custom_judge_prompt to a readable .txt file (see "
-                    "docs/custom_evaluation.md), or unset it to use the built-in judge."
-                )
-            self.custom_judge_prompt = template_path.read_text()
-
     # ----- QA mode ----------------------------------------------------------
 
     def judge_qa(
@@ -204,9 +188,6 @@ class LLMJudge:
         expected_answer: str,
     ) -> QAJudgeResult:
         """Run the QA judge.  Returns a :class:`QAJudgeResult`."""
-        # A configured custom rubric overrides every built-in judge.
-        if self.custom_judge_prompt:
-            return self.judge_custom(question, answer, expected_answer)
         if not answer:
             return QAJudgeResult(
                 correct=False,
@@ -242,117 +223,6 @@ class LLMJudge:
         comment = str(data.get("COMMENT", ""))
         correct = evaluation == "correct"
         return QAJudgeResult(correct=correct, comment=comment, raw_output=raw)
-
-    # ----- Custom (user-supplied rubric) mode -------------------------------
-
-    def judge_custom(
-        self,
-        question: str,
-        answer: str,
-        expected_answer: str,
-    ) -> QAJudgeResult:
-        """Run the user-supplied custom judge rubric.
-
-        Uses ``self.custom_judge_prompt`` (loaded from
-        ``eval.custom_judge_prompt``) for EVERY case, overriding the built-in
-        per-dataset prompts.  The template may reference ``{question}``,
-        ``{response}``, and ``{correct_answer}`` placeholders.  Returns a
-        :class:`QAJudgeResult`.
-        """
-        if not self.custom_judge_prompt:
-            raise RuntimeError(
-                "judge_custom called without a custom_judge_prompt template. "
-                "Set eval.custom_judge_prompt in your config."
-            )
-        if not answer:
-            return QAJudgeResult(
-                correct=False,
-                comment="Agent produced no answer.",
-                raw_output="",
-            )
-
-        prompt = self.custom_judge_prompt.format(
-            question=question,
-            response=answer,
-            correct_answer=expected_answer,
-        )
-
-        raw = self._call_llm(prompt)
-        return self._parse_custom_output(raw)
-
-    def _parse_custom_output(self, raw: str) -> QAJudgeResult:
-        """Parse a custom-rubric judge verdict robustly.
-
-        Accepts any of the following verdict formats (case-insensitive):
-          * a JSON object ``{"correct": bool, "reasoning": str}`` (also accepts
-            ``confidence``/``judge_confidence`` for the optional calibration);
-          * a line ``correct: true`` / ``correct: false`` (also ``yes`` / ``no``);
-          * a line ``GRADE: CORRECT`` / ``GRADE: INCORRECT``.
-
-        Markdown bold markers (``**correct:** true``) are tolerated. When no
-        verdict can be parsed, defaults to ``correct=False`` (conservative,
-        matching the built-in judges) and records a parse failure.
-        """
-        # 1) Try a JSON object first (most explicit).  Scan all brace-balanced
-        #    candidates and use the first that has a "correct" key.
-        for match in re.finditer(r"\{.*?\}", raw, re.DOTALL):
-            try:
-                data = json.loads(match.group())
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(data, dict):
-                continue
-            if "correct" in data:
-                correct = bool(data["correct"])
-                reasoning = str(
-                    data.get("reasoning")
-                    or data.get("comment")
-                    or data.get("explanation")
-                    or ""
-                )
-                conf = data.get("judge_confidence", data.get("confidence"))
-                judge_confidence: float | None
-                try:
-                    judge_confidence = float(conf) if conf is not None else None
-                except (TypeError, ValueError):
-                    judge_confidence = None
-                return QAJudgeResult(
-                    correct=correct,
-                    comment=reasoning or raw,
-                    raw_output=raw,
-                    judge_confidence=judge_confidence,
-                )
-
-        # Strip markdown bold so "**correct:** true" / "**GRADE:** CORRECT" parse.
-        stripped = raw.replace("**", "")
-
-        # 2) GRADE: CORRECT|INCORRECT  (check INCORRECT first so the substring
-        #    "correct" inside "incorrect" never reads as a pass).
-        grade_match = re.search(r"GRADE:\s*(INCORRECT|CORRECT)", stripped, re.IGNORECASE)
-        if grade_match:
-            correct = grade_match.group(1).upper() == "CORRECT"
-            return QAJudgeResult(correct=correct, comment=self._extract_reasoning(stripped) or raw, raw_output=raw)
-
-        # 3) correct: true|false|yes|no
-        line_match = re.search(r"correct:\s*(true|false|yes|no)", stripped, re.IGNORECASE)
-        if line_match:
-            token = line_match.group(1).lower()
-            correct = token in ("true", "yes")
-            return QAJudgeResult(correct=correct, comment=self._extract_reasoning(stripped) or raw, raw_output=raw)
-
-        # Unparseable — default to incorrect (conservative).
-        self._judge_parse_failure_count = getattr(self, "_judge_parse_failure_count", 0) + 1
-        logger.warning("Custom judge output could not be parsed: %s", raw[:200])
-        return QAJudgeResult(correct=False, comment=raw, raw_output=raw)
-
-    @staticmethod
-    def _extract_reasoning(stripped: str) -> str:
-        """Best-effort pull a ``reasoning:`` / ``explanation:`` section for the comment."""
-        m = re.search(
-            r"(?:reasoning|explanation):\s*(.+?)(?=\n\s*(?:correct|grade|confidence):|$)",
-            stripped, re.DOTALL | re.IGNORECASE,
-        )
-        return m.group(1).strip() if m else ""
 
     # ----- Rating parser (0/1/2, shared by answer-only mode) ----------------
 
@@ -434,8 +304,6 @@ class LLMJudge:
 
         Returns a :class:`QAJudgeResult`.
         """
-        if self.custom_judge_prompt:
-            return self.judge_custom(question, answer, expected_answer)
         if not answer:
             return QAJudgeResult(
                 correct=False,
@@ -459,8 +327,6 @@ class LLMJudge:
         expected_answer: str,
     ) -> QAJudgeResult:
         """Run the BrowseComp-Plus judge (official grading prompt from texttron/BrowseComp-Plus)."""
-        if self.custom_judge_prompt:
-            return self.judge_custom(question, answer, expected_answer)
         if not answer:
             return QAJudgeResult(
                 correct=False,
@@ -512,8 +378,6 @@ class LLMJudge:
         ``Explanation:`` / ``Conclusion: Correct|Incorrect`` rather than
         BrowseComp's ``correct: yes|no``.  Returns a :class:`QAJudgeResult`.
         """
-        if self.custom_judge_prompt:
-            return self.judge_custom(question, answer, expected_answer)
         if not answer:
             return QAJudgeResult(
                 correct=False,

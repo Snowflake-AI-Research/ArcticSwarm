@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import sqlite3
 import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -66,6 +67,131 @@ def _cache_key(url: str, pages: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
+# Global, cross-run SQLite cache store
+# ---------------------------------------------------------------------------
+#
+# A single SQLite file shared by EVERY run on a machine, so a URL fetched once
+# is never re-fetched.  Keyed by the same ``_cache_key`` the per-question
+# file cache uses (url[+pages] hash), so it is seeded directly from historical
+# ``cache/content`` dirs (see scripts/build_fetch_cache.py).  Layered UNDER the
+# existing ``ContentCache`` API: success entries are written through to it on
+# every fetch; failures are NOT (a transient network failure must never poison
+# the shared cache — those URLs get refetched live).  On key conflict the
+# longer content wins.
+
+_GLOBAL_STORES: dict[str, "_GlobalSqliteStore | None"] = {}
+_GLOBAL_STORES_LOCK = threading.Lock()
+
+
+def get_global_store(db_path: str | Path | None) -> "_GlobalSqliteStore | None":
+    """Return the process-wide store for ``db_path`` (one per resolved path).
+
+    Returns ``None`` when ``db_path`` is empty or the store can't be opened
+    (e.g. the directory isn't writable) — callers then fall back to the
+    per-question file cache only, so a missing global cache never breaks a run.
+    """
+    if not db_path:
+        return None
+    key = str(Path(db_path).expanduser())
+    with _GLOBAL_STORES_LOCK:
+        if key in _GLOBAL_STORES:
+            return _GLOBAL_STORES[key]
+        try:
+            # The cluster sweeps /data to S3; if the cache file is gone, restore
+            # the shared cache root from S3 before opening (no-op when already
+            # present / off-cluster / aws absent). Syncs the PARENT dir
+            # (/data/soyoon/cache), so one `aws s3 sync` restores both the fetch
+            # and search caches; keyed once per dir per process.
+            from arcticswarm.tools.cache_restore import ensure_cache_restored
+            ensure_cache_restored(Path(key).parent, present_path=Path(key))
+        except Exception as exc:  # noqa: BLE001 - restore is best-effort
+            log.warning("Global fetch cache: S3 restore check failed: %s", exc)
+        try:
+            store: _GlobalSqliteStore | None = _GlobalSqliteStore(Path(key))
+        except Exception as exc:  # noqa: BLE001 - degrade gracefully
+            log.warning("Global fetch cache unavailable at %s: %s", key, exc)
+            store = None
+        _GLOBAL_STORES[key] = store
+        return store
+
+
+class _GlobalSqliteStore:
+    """Thread-safe SQLite key/value store of :class:`CacheEntry` rows.
+
+    One connection (``check_same_thread=False`` + WAL + a coarse lock) is shared
+    across the run's worker threads — fine for the modest, mostly-read fetch
+    workload.  Only successful entries are stored.
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        self._path = db_path
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        self._conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=30.0)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA busy_timeout=30000")
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS entries ("
+            "  key TEXT PRIMARY KEY,"
+            "  url TEXT NOT NULL,"
+            "  content TEXT NOT NULL,"
+            "  pages TEXT NOT NULL DEFAULT '',"
+            "  is_pdf INTEGER NOT NULL DEFAULT 0,"
+            "  via TEXT NOT NULL DEFAULT '',"
+            "  metadata TEXT NOT NULL DEFAULT '{}'"
+            ")"
+        )
+        self._conn.commit()
+
+    def get(self, key: str) -> "CacheEntry | None":
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT url, content, pages, is_pdf, via, metadata FROM entries WHERE key=?",
+                (key,),
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            meta = json.loads(row[5]) if row[5] else {}
+        except Exception:
+            meta = {}
+        return CacheEntry(
+            url=row[0], content=row[1], pages=row[2],
+            is_pdf=bool(row[3]), is_error=False, via=row[4], metadata=meta,
+        )
+
+    def has(self, key: str) -> bool:
+        with self._lock:
+            return self._conn.execute(
+                "SELECT 1 FROM entries WHERE key=? LIMIT 1", (key,)
+            ).fetchone() is not None
+
+    def put(self, key: str, entry: "CacheEntry") -> None:
+        """Insert a success entry; on key conflict the LONGER content wins."""
+        if entry.is_error or not entry.content:
+            return
+        with self._lock:
+            try:
+                self._conn.execute(
+                    "INSERT INTO entries(key, url, content, pages, is_pdf, via, metadata)"
+                    " VALUES(?,?,?,?,?,?,?)"
+                    " ON CONFLICT(key) DO UPDATE SET"
+                    "   content=excluded.content, url=excluded.url, pages=excluded.pages,"
+                    "   is_pdf=excluded.is_pdf, via=excluded.via, metadata=excluded.metadata"
+                    " WHERE length(excluded.content) > length(entries.content)",
+                    (
+                        key, entry.url, entry.content, entry.pages,
+                        int(entry.is_pdf), entry.via,
+                        json.dumps(entry.metadata or {}, ensure_ascii=False),
+                    ),
+                )
+                self._conn.commit()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Global fetch cache write error for key %s: %s", key, exc)
+
+
+# ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
 
@@ -105,6 +231,7 @@ class ContentCache:
         cache_dir: str | Path | None = None,
         enabled: bool = True,
         case_id: str = "",
+        global_db_path: str | Path | None = None,
     ) -> None:
         self._enabled = enabled
         self._lock = threading.Lock()
@@ -117,20 +244,31 @@ class ContentCache:
             self._cache_dir = base
             self._cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # Global, cross-run SQLite store (shared by every run). Layered UNDER
+        # the per-question file cache: read global-first, write successes
+        # through. None when disabled / unavailable.
+        self._global = get_global_store(global_db_path) if enabled else None
+
     @property
     def enabled(self) -> bool:
-        return self._enabled and self._cache_dir is not None
+        return self._enabled and (self._cache_dir is not None or self._global is not None)
 
     def get(self, url: str, pages: str = "") -> CacheEntry | None:
         """Look up a cache entry by URL and pages.  Returns None on miss.
 
-        Consults the per-question file cache, which may also hold cached
-        failures for within-run dedup.
+        The global (cross-run) store is consulted first; on a miss the
+        per-question file cache is checked (which may also hold cached
+        failures for within-run dedup).
         """
         if not self.enabled:
             return None
 
         key = _cache_key(url, pages)
+
+        if self._global is not None:
+            entry = self._global.get(key)
+            if entry is not None:
+                return entry
 
         if self._cache_dir is None:
             return None
@@ -181,13 +319,18 @@ class ContentCache:
             metadata=metadata or {},
         )
 
+        # Write through to the shared global store (success only).
+        if self._global is not None:
+            self._global.put(key, entry)
+
         if self._cache_dir is None:
             return
         with self._lock:
             path = self._cache_dir / f"{key}.json"  # type: ignore[operator]
             try:
-                # Recreate the case dir right before writing in case it was
-                # removed since __init__ (idempotent, microseconds).
+                # The cluster sweeps /data to S3 and deletes locally mid-run, so
+                # the case dir created in __init__ may be gone by write time.
+                # Recreate it right before writing (idempotent, microseconds).
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(
                     json.dumps(asdict(entry), ensure_ascii=False),
@@ -206,8 +349,9 @@ class ContentCache:
     ) -> None:
         """Cache a fetch failure so other agents don't retry the same broken URL.
 
-        Failures are recorded in the per-question file cache only (within-run
-        dedup).
+        Failures are recorded ONLY in the per-question file cache (within-run
+        dedup) — never in the shared global store, so a transient network
+        failure never poisons future runs.
         """
         if not self.enabled or not error_message:
             return
@@ -236,8 +380,8 @@ class ContentCache:
                 except Exception:
                     pass
             try:
-                # Recreate the case dir in case it was removed since __init__
-                # (see put()).
+                # Recreate the case dir in case the /data->S3 sweep removed it
+                # since __init__ (see put()).
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(
                     json.dumps(asdict(entry), ensure_ascii=False),
@@ -251,6 +395,8 @@ class ContentCache:
         if not self.enabled:
             return False
         key = _cache_key(url, pages)
+        if self._global is not None and self._global.has(key):
+            return True
         if self._cache_dir is None:
             return False
         with self._lock:

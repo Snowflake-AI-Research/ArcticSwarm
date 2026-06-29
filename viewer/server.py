@@ -206,9 +206,9 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument(
-        "--tunnel",
+        "--no-tunnel",
         action="store_true",
-        help="Expose a public URL via a Cloudflare quick tunnel (off by default; local-only otherwise).",
+        help="Disable the Cloudflare quick tunnel (public URL).",
     )
     args = parser.parse_args()
 
@@ -227,7 +227,7 @@ def main():
 
     import uvicorn
 
-    if args.tunnel:
+    if not args.no_tunnel:
         _start_cloudflare_tunnel(args.port)
 
     if not args.no_browser:

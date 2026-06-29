@@ -227,6 +227,31 @@ class WebConfig:
     )
     disable_source_scorer: bool = False
     disable_bbs_isolation: bool = False
+    # Seamless search-result cache (see arcticswarm/tools/search_cache.py).
+    # When enabled with a built DB path, web_search serves cached raw results
+    # (source scorer always re-runs) and write-through-fills live misses.
+    enable_search_cache: bool = True
+    search_cache_db: str = "/data/cache/search_cache.sqlite"
+    # When False, bypass cache READS (always go live) but still write-through,
+    # overwriting the key so the cache is refreshed with the latest live result.
+    search_cache_read: bool = True
+    # --- Node-local cache mirror (multi-host runs) -------------------------
+    # The fetch/search caches are mirrored to node-local disk (cache_local_dir)
+    # at startup and used from there (WAL on local xfs is safe); new rows are
+    # synced back to the shared master every cache_sync_every cases
+    # (rollback-journal + flock, no SIGBUS). This is essential whenever an eval
+    # runs across multiple hosts with caches enabled — a shared WAL SQLite on a
+    # network filesystem (e.g. Lustre) crashes with a bus error otherwise.
+    #
+    # Default True = auto: the eval CLI engages the mirror only when caching is
+    # enabled AND node-local fast storage (cache_local_dir's mount) exists, so a
+    # dev box / CPU pod without a fast-disk mount silently uses the master cache
+    # directly. Empty cache_local_dir leaves the mirror off unless a fast-disk
+    # mount exists; set cache_local_mirror=false to force it off everywhere. See
+    # snowflake/snowflake_specific.md for the Snowflake-cluster node-mirror setup.
+    cache_local_mirror: bool = True
+    cache_local_dir: str = ""
+    cache_sync_every: int = 5
     # When True, the web_search repeat-guard escalates to a hard stop (forces a
     # looping subagent to finalize) once it is unambiguously stuck. Set False to
     # keep only the soft nudge (no forced bail).
@@ -262,6 +287,12 @@ class WebConfig:
     corpus_service: str = ""
     corpus_pat_connection: str = "default"
     corpus_local_path: str = ""
+    # --- Global cross-run fetch cache --------------------------------------
+    # Override the shared web_fetch/pdf_read SQLite cache path for this run
+    # (default resolved from settings ``fetch_cache_path`` / env
+    # ARCTICSWARM_FETCH_CACHE / the built-in default). Set to "off" / "none"
+    # to disable the global cache for this run.
+    fetch_cache_path: str = ""
     # --- Cortex web-search provider (provider: cortex / cortex-grounding) ----
     # Snowflake account used to reach the Cortex ``agent:run`` web-search
     # passthrough.  Empty => fall back to the settings/env-resolved
@@ -353,13 +384,6 @@ class EvalConfig:
     # of the Cortex proxy. Used to run the judge on a
     # self-hosted Qwen (e.g. Qwen/Qwen3-30B-A3B-Instruct-2507 at http://host:port/v1).
     judge_model_base_url: str = ""
-    # Path to a custom judge-rubric template (.txt) for evaluating a custom
-    # dataset. When non-empty, the LLM judge uses this template for EVERY case,
-    # overriding the built-in per-dataset prompt. The template supports
-    # ``{question}``, ``{response}``, and ``{correct_answer}`` placeholders.
-    # Default "" keeps the built-in QA / BrowseComp judges. See
-    # docs/custom_evaluation.md.
-    custom_judge_prompt: str = ""
     qa_llm: bool = False
     vip_only: bool = True
     limit: int = 0
@@ -379,7 +403,7 @@ class EvalConfig:
     checkpoint_interval: int = 5
     rebuild_from_trajectories: bool = False
     verbose: bool = False
-    # Live, per-case activity feed (CLI-style) during the run.
+    # Live, per-case activity feed (snowswarm-CLI-style) during the run.
     # Each swarm/agent event prints one console line prefixed with the case's
     # conv_id (errors in red, normal progress plain) so parallel cases can be
     # followed live.  Set ``eval.stream=false`` to disable and keep only the
@@ -550,6 +574,12 @@ class RunConfig:
 
         # Web
         config.web_search_enabled = self.web.enabled
+        config.enable_search_cache = self.web.enable_search_cache
+        config.search_cache_db = self.web.search_cache_db
+        config.search_cache_read = self.web.search_cache_read
+        config.cache_local_mirror = self.web.cache_local_mirror
+        config.cache_local_dir = self.web.cache_local_dir
+        config.cache_sync_every = self.web.cache_sync_every
         config.web_search_provider = self.web.provider
         config.no_js = self.web.no_js
         config.no_web_fetch = self.web.no_fetch
@@ -584,6 +614,14 @@ class RunConfig:
         # ArcticswarmConfig.resolve() already loaded (settings / CORTEX_ACCOUNT).
         if self.web.cortex_account:
             config.cortex_account = self.web.cortex_account
+        # Global fetch-cache override: a non-empty web.fetch_cache_path wins
+        # over the settings/env/default resolved in ArcticswarmConfig.resolve();
+        # "off"/"none"/"disabled"/"false" disables the global cache this run.
+        _fcp = (self.web.fetch_cache_path or "").strip()
+        if _fcp:
+            config.fetch_cache_path = (
+                "" if _fcp.lower() in ("off", "none", "disabled", "false") else _fcp
+            )
         config.use_fetch_compactor = self.web.use_fetch_compactor
         config.use_pdf_compactor = self.web.use_pdf_compactor
         config.max_tool_output_tokens = self.web.max_tool_output_tokens
@@ -640,9 +678,6 @@ class RunConfig:
 
         # prepare_report wait-loop default timeout (yaml: eval.prepare_timeout)
         config.prepare_report_timeout = self.eval.prepare_timeout
-
-        # Custom judge-rubric template path (yaml: eval.custom_judge_prompt).
-        config.custom_judge_prompt = self.eval.custom_judge_prompt
 
         return config
 

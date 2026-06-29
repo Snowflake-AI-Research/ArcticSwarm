@@ -1532,13 +1532,13 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
                             "Force-report timer fired — building fallback "
                             "report from BBS"
                         )
-                        # When surface_bbs_candidates is on, build a
+                        # 0628: when surface_bbs_candidates is on, build a
                         # COMMITTED answer that LEADS with the team's VERIFIED
                         # #consensus verdicts + #key-findings (judge-extractable),
                         # instead of dumping raw posts. Converts the found-but-
                         # blocked-at-timeout cases (the correct answer is on the
                         # BBS but the LLM never reached send_user_markdown_report).
-                        # Also take this committed-answer path when
+                        # 0629: also take this committed-answer path when
                         # reject_refusal_reports is on, so the timeout never
                         # finalizes a give-up.
                         # Best-effort; falls back to the raw dump on any issue.
@@ -1585,7 +1585,7 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
                                     f"[{msg.channel}] {msg.author}: "
                                     f"{msg.content}"
                                 )
-                        # When reject_refusal_reports is on, never finalize
+                        # 0629: when reject_refusal_reports is on, never finalize
                         # a bare dump / give-up — wrap with a commit instruction
                         # and a synthetic FINAL ANSWER line so the judge can
                         # still extract a committed answer at the wall.
@@ -1695,9 +1695,9 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
 
             # Cheap-win: if the answer is still empty or a
             # refusal, inject ONE recovery turn asking for a best-guess.
-            # A meaningful share of wrong cases were empty/refusal answers
-            # that never reached Layer 4a.
-            # reject_refusal_reports also enables this post-hoc recovery
+            # 14/31 wrong cases in 0505_exp1_sonnet_tier1 were empty/refusal
+            # answers that never reached Layer 4a.
+            # 0629: reject_refusal_reports also enables this post-hoc recovery
             # (independent of enable_empty_answer_recovery) so the
             # bounce -> natural-turn-exit -> empty-answer path is still caught.
             if (

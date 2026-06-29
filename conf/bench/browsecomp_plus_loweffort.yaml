@@ -1,7 +1,7 @@
 # BrowseComp-Plus benchmark — low-effort baseline.
-# No explicit reasoning_effort overrides, swarm includes the coding profile, no
-# force-submit. Use this for clean A/B against the gpt-5 baseline (e.g. gpt-5.4
-# vs gpt-5).
+# Mirrors the config used for 0508_bcp_gpt5 (qa_llm_accuracy 0.81): no explicit
+# reasoning_effort overrides, swarm includes the coding profile, no force-submit.
+# Use this for clean A/B against the gpt-5 baseline (e.g. gpt-5.4 vs gpt-5).
 # Usage: arcticswarm-eval --config conf/bench/browsecomp_plus_loweffort.yaml eval.output=results/<name>
 
 tools:
@@ -30,7 +30,7 @@ web:
   # The BrowseComp-Plus numbers in the paper used Snowflake Cortex Search
   # whose coordinates would be supplied (commented) below. To reproduce against
   # such a service, set corpus_backend: cortex and fill in the placeholders
-  # (needs a PAT in ~/.snowflake/connections.toml [default]). To plug your own
+  # (needs a PAT in ~/.snowflake/connections.toml [ml_data]). To plug your own
   # search service, set corpus_backend: local and corpus_local_path to a corpus JSONL.
   corpus_backend: stub
   # corpus_backend: cortex
@@ -52,9 +52,8 @@ azure:
   enabled: false
 
 eval:
-  # public OpenAI GPT-4.1 judge; needs OPENAI_API_KEY in config_files.json (or set azure.enabled + your Azure deployment)
-  judge_model: openai-gpt-4.1
-  csv_path: arcticswarm/eval/data/browsecomp_plus_subset_representative.csv
+  judge_model: gpt-4-1-dev
+  csv_path: arcticswarm/eval/data/browsecomp_plus_subset100.csv
   datasets: [BROWSECOMP_PLUS_V1]
   parallel: 18
   timeout: 6000

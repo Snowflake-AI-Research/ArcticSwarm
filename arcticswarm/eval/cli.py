@@ -491,6 +491,30 @@ def main() -> None:
         )
         sys.exit(1)
 
+    # Node-local cache mirror: when caching is enabled, automatically mirror the
+    # shared master caches to node-local disk and sync deltas back periodically.
+    # Avoids the SIGBUS/deadlock from a shared WAL SQLite on Lustre across hosts.
+    # Mutates config.{fetch_cache_path,search_cache_db} to the local mirrors.
+    #
+    # should_auto_mirror() engages it (web.cache_local_mirror defaults True) only
+    # when caching is active AND node-local fast storage exists, so a dev box /
+    # CPU pod without a fast-disk mount silently uses the master cache directly.
+    # Set web.cache_local_mirror=false to force it off.
+    _cache_mirror = None
+    from arcticswarm.tools.cache_sync import should_auto_mirror
+    if should_auto_mirror(config) and ev.output and not args.rejudge:
+        try:
+            from arcticswarm.tools.cache_sync import CacheMirrorManager
+            _cache_mirror = CacheMirrorManager(config, output_dir=ev.output)
+            _cache_mirror.setup_and_start()
+            console.print(
+                f"[dim]cache mirror on: shared caches copied to "
+                f"{getattr(config, 'cache_local_dir', '')}; deltas synced back to "
+                f"the master cache every {getattr(config, 'cache_sync_every', 5)} cases[/dim]"
+            )
+        except Exception as exc:  # never let cache plumbing block a run
+            console.print(f"[yellow]cache mirror setup failed ({exc}); continuing without it[/yellow]")
+
     if not config.api_key:
         console.print(
             "[bold red]Error:[/bold red] api_key is not set. "
@@ -786,7 +810,7 @@ def main() -> None:
 
     # Initialize judge.
     #
-    # Azure GPT judge (e.g. ``azure.enabled=true eval.judge_model=<your-azure-gpt-4.1-deployment>``)
+    # Azure GPT judge (e.g. ``azure.enabled=true eval.judge_model=gpt-4-1-dev``)
     # takes precedence over a self-hosted ``judge_model_base_url``: when the
     # judge model is a GPT deployment and Azure is enabled, route through Azure
     # and ignore any vLLM judge URL baked into the preset. Otherwise the
@@ -800,7 +824,6 @@ def main() -> None:
         model=ev.judge_model,
         use_azure_openai=_use_azure_judge,
         judge_base_url="" if _use_azure_judge else ev.judge_model_base_url,
-        custom_judge_prompt=ev.custom_judge_prompt,
     )
 
     # Re-judge resumed cases that are missing judge verdicts.
@@ -1255,7 +1278,7 @@ def main() -> None:
 
         # Phase 2: Run remaining cases
         if any(remaining_count_per_run):
-            # Live per-case activity feed (CLI style).  Bound to the
+            # Live per-case activity feed (snowswarm-CLI style).  Bound to the
             # progress bar's console so feed lines render above the live bar;
             # disabled via ``eval.stream=false``.
             live_logger = (

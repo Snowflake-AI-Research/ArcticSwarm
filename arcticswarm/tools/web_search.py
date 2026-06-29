@@ -68,12 +68,23 @@ class WebSearchTool(BaseTool):
         provider_order: list[str] | None = None,
         hard_stop: bool = True,
         neardup_hard_stop: int | None = None,
+        search_cache: Any | None = None,
+        search_cache_read: bool = True,
     ) -> None:
         self._api_key = api_key.strip()
         self._serper_api_key = (serper_api_key or "").strip()
         self._tavily_api_key = (tavily_api_key or "").strip()
         self._judge = judge
         self._rich_callback = rich_callback
+        # Seamless search-result cache (see search_cache.py). Consulted at the
+        # RAW per-provider level so the source scorer + formatter always re-run;
+        # the model cannot tell a hit from a live call.
+        #   search_cache_read=True  -> serve cache hits (skip live on hit).
+        #   search_cache_read=False -> bypass reads (always live) but still
+        #                              write-through, OVERWRITING the key so the
+        #                              cache is refreshed with the latest live.
+        self._search_cache = search_cache
+        self._search_cache_read = search_cache_read
         # Normalize the provider try-order: lowercase, keep only known
         # providers, and append any missing known providers at the end so a
         # partial spec still falls back through everything.  Availability is
@@ -99,6 +110,13 @@ class WebSearchTool(BaseTool):
         self._serper_searches = 0
         self._fallback_log: list[dict[str, Any]] = []
         self._search_log: list[dict[str, Any]] = []
+        # Search-result cache hit/miss instrumentation (counts per provider
+        # LOOKUP that consulted the cache). _last_cache_hit carries the most
+        # recent lookup's outcome onto the recorded search_log entry so the
+        # cache hit rate is measurable from web_search_log/<case>.json.
+        self._search_cache_hits = 0
+        self._search_cache_misses = 0
+        self._last_cache_hit: bool | None = None
         self._last_brave_error: str | None = None
         self._last_brave_meta: dict[str, Any] | None = None
         # Repeat-query guard state (per tool instance == per subagent).
@@ -417,6 +435,16 @@ class WebSearchTool(BaseTool):
                 "Web search repeat-guard: blocked %d exact-repeat query attempt(s)",
                 self._repeat_blocked,
             )
+        cache_lookups = self._search_cache_hits + self._search_cache_misses
+        if cache_lookups > 0:
+            logger.info(
+                "Web search cache stats: %d lookups, %d hits (%.1f%%), %d misses",
+                cache_lookups, self._search_cache_hits,
+                100.0 * self._search_cache_hits / cache_lookups,
+                self._search_cache_misses,
+            )
+        self._search_cache_hits = 0
+        self._search_cache_misses = 0
         self._total_searches = 0
         self._brave_searches = 0
         self._tavily_searches = 0
@@ -452,6 +480,7 @@ class WebSearchTool(BaseTool):
             "query": query,
             "source": source,
             "result_count": result_count,
+            "cache_hit": self._last_cache_hit,
             "query_features": self._query_features(query),
         }
         score_summary = summarize_search_scores(scores)
@@ -626,7 +655,56 @@ class WebSearchTool(BaseTool):
 
     # ----- Brave Search API -------------------------------------------------
 
+    def _cache_get(self, provider, query, count, country):
+        """Read from cache only when reads are enabled.
+
+        Records hit/miss instrumentation: a non-empty result is a cache HIT
+        (and is what the caller returns); ``None`` while reads are enabled is a
+        MISS (the caller then goes live). ``_last_cache_hit`` is set so the
+        recorded search_log entry reflects the serving provider's source.
+        """
+        if self._search_cache is None or not self._search_cache_read:
+            self._last_cache_hit = None  # cache not consulted
+            return None
+        try:
+            res = self._search_cache.get(provider, query, count, country)
+        except Exception as exc:
+            logger.debug("SearchCache get (%s) failed: %s", provider, exc)
+            self._last_cache_hit = None
+            return None
+        if res:
+            self._search_cache_hits += 1
+            self._last_cache_hit = True
+            return res
+        self._search_cache_misses += 1
+        self._last_cache_hit = False
+        return None
+
+    def _cache_put(self, provider, query, count, country, res):
+        """Write-through. When reads are disabled (refresh mode) overwrite the
+        key so the cache reflects the latest live result."""
+        if self._search_cache is None or not res:
+            return
+        try:
+            self._search_cache.put(
+                provider, query, count, country, res,
+                replace=not self._search_cache_read,
+            )
+        except Exception as exc:
+            logger.debug("SearchCache put (%s) failed: %s", provider, exc)
+
     def _search_brave(
+        self, query: str, count: int, country: str | None, safesearch: str,
+    ) -> list[dict[str, str]] | None:
+        """Cache-aware Brave search: serve cached raw results, else live + write-through."""
+        hit = self._cache_get("brave", query, count, country)
+        if hit:
+            return hit
+        res = self._search_brave_live(query, count, country, safesearch)
+        self._cache_put("brave", query, count, country, res)
+        return res
+
+    def _search_brave_live(
         self, query: str, count: int, country: str | None, safesearch: str,
     ) -> list[dict[str, str]] | None:
         """Call Brave Search API. Returns normalized results or None to signal fallback."""
@@ -690,6 +768,17 @@ class WebSearchTool(BaseTool):
     def _search_tavily(
         self, query: str, count: int,
     ) -> list[dict[str, str]] | None:
+        """Cache-aware Tavily search: serve cached raw results, else live + write-through."""
+        hit = self._cache_get("tavily", query, count, None)
+        if hit:
+            return hit
+        res = self._search_tavily_live(query, count)
+        self._cache_put("tavily", query, count, None, res)
+        return res
+
+    def _search_tavily_live(
+        self, query: str, count: int,
+    ) -> list[dict[str, str]] | None:
         """Call Tavily Search API. Returns normalized results or None on failure."""
         try:
             resp = requests.post(
@@ -736,6 +825,17 @@ class WebSearchTool(BaseTool):
     # ----- Google Serper API ------------------------------------------------
 
     def _search_serper(
+        self, query: str, count: int, country: str | None,
+    ) -> list[dict[str, str]] | None:
+        """Cache-aware Serper search: serve cached raw results, else live + write-through."""
+        hit = self._cache_get("serper", query, count, country)
+        if hit:
+            return hit
+        res = self._search_serper_live(query, count, country)
+        self._cache_put("serper", query, count, country, res)
+        return res
+
+    def _search_serper_live(
         self, query: str, count: int, country: str | None,
     ) -> list[dict[str, str]] | None:
         """Call Google Serper API. Returns normalized results or None on failure."""

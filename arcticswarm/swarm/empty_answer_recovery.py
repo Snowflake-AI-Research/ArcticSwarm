@@ -66,10 +66,12 @@ _REFUSAL_MARKERS: tuple[str, ...] = (
 
 
 # Broader give-up detector for the FINAL ANSWER line specifically (used by the
-# config-gated ``reject_refusal_reports`` report bounce). The 3rd alternation
-# group includes ``satisf`` so "no candidate satisfies all constraints" — a
-# common give-up phrasing — is caught (it matched NEITHER ``_REFUSAL_MARKERS``
-# nor a plain answer check).
+# qwen-gated ``reject_refusal_reports`` report bounce). Copied from the 0628
+# investigation's GIVEUP regex (``.invest_0628/master_extract.py``), with the
+# 3rd alternation group extended with ``satisf`` so "no candidate satisfies all
+# constraints" — the most common qwen give-up phrasing — is caught (it matched
+# NEITHER ``_REFUSAL_MARKERS`` nor the original regex). Kept here, not imported
+# from the scratch dir, so it ships.
 _GIVEUP_RE = re.compile(
     r"no (valid |single |definitive )?(answer|monument|player|person|candidate|"
     r"match|publication|individual|paper|name|location|film|song|book|company|"
@@ -102,7 +104,7 @@ def extract_final_answer(report: str | None) -> str:
 def final_answer_is_giveup(report: str | None) -> bool:
     """True when the report's FINAL ANSWER is a refusal / give-up.
 
-    Used by the config-gated ``reject_refusal_reports`` bounce in
+    Used by the qwen-gated ``reject_refusal_reports`` bounce in
     ``SendReportTool.execute``. Operates on the extracted FINAL ANSWER line
     (NOT the whole report — the body legitimately discusses caveats), and
     deliberately does NOT apply ``is_empty_or_refusal``'s ``min_len`` heuristic,
@@ -128,7 +130,7 @@ def is_empty_or_refusal(answer: str | None, *, min_len: int = 30) -> bool:
 
     Used by the cheap-win recovery turn to detect cases that
     would otherwise skip Layer 4a and slip through as wrong.  Matches the
-    empty/refusal wrong-case shape seen during calibration.
+    14/31 wrong-case shape seen in the 0505 calibration set.
     """
     if not answer or not answer.strip():
         return True

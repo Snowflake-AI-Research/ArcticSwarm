@@ -1,7 +1,12 @@
 # Environment setup / replication
 
 How to build the ArcticSwarm eval environment so anyone can reproduce
-BrowseComp / BrowseComp-Plus / EvoBrowseComp runs.
+BrowseComp / BrowseComp-Plus runs.
+
+> Running on our Snowflake cluster? The shared prebuilt env, S3 cache restore,
+> and exact paths/scripts live in
+> [snowflake/snowflake_specific.md](snowflake/snowflake_specific.md). The
+> fresh-install path below is everything else.
 
 ## Prerequisites
 
@@ -38,31 +43,15 @@ arcticswarm-eval --help
 arcticswarm-eval -c conf/bench/browsecomp.yaml eval.limit=1 eval.output=/tmp/smoke   # 1-case smoke run
 ```
 
-## Credentials & the config file
+## Credentials
 
-ArcticSwarm reads all secrets/endpoints from one JSON **settings file**.
+Copy the template to a repo-root `config_files.json` and fill in your keys (or
+point `ARCTICSWARM_SETTINGS_PATH` at another file). See README §2 for the full
+table. `config_files.json` is git-ignored — only the template is tracked.
 
 ```bash
 cp config_files.template.json config_files.json   # then edit config_files.json
 ```
-
-**Where the settings file is read from** (in order):
-
-1. `$ARCTICSWARM_SETTINGS_PATH`, if set — an absolute or `~`-expanded path to any
-   JSON file. Use this to keep secrets outside the repo or to switch profiles:
-   `export ARCTICSWARM_SETTINGS_PATH=/etc/arcticswarm/prod.json`.
-2. Otherwise `./config_files.json` (relative to the current working directory —
-   normally the repo root).
-
-`config_files.json` is git-ignored, so real secrets are never committed — only
-`config_files.template.json` is tracked, and its `__help__` block documents
-every key. See README §2 for the key table.
-
-> **Settings file vs. run config — two different things.** The settings file
-> above holds *credentials/endpoints*. The benchmark/model/tool selection is a
-> separate **run config** passed explicitly with `--config conf/bench/*.yaml`
-> (composable left-to-right, with `dotted.key=value` overrides). The settings
-> file path is never passed with `--config`.
 
 Common keys:
 
@@ -75,7 +64,8 @@ Common keys:
   "jina_api_key": "",
   "cortex_account": "",
   "use_azure_openai": true,
-  "AZURE_OPENAI_API_KEY": "", "AZURE_OPENAI_ENDPOINT": ""
+  "AZURE_OPENAI_API_KEY": "", "AZURE_OPENAI_ENDPOINT": "",
+  "fetch_cache_path": "/data/cache/fetch_cache.sqlite"
 }
 ```
 
@@ -84,22 +74,25 @@ Common keys:
 - `jina_api_key` (or env `JINA_API_KEY`) enables the Jina Reader API as the
   primary `web_fetch` / `pdf_read` extractor; optional — fetch degrades to
   Serper → `requests` when it is unset.
-- The default eval judge is the public `openai-gpt-4.1` (needs `openai_api_key`).
-  For an Azure GPT-4.1 deployment instead, set `azure.enabled=true
-  eval.judge_model=<your-deployment>` with `AZURE_OPENAI_API_KEY` /
-  `AZURE_OPENAI_ENDPOINT`. A Claude judge works too: `eval.judge_model=claude-sonnet-4-5`.
+- The Azure GPT-4.1-dev judge needs `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_ENDPOINT`
+  (`azure.enabled=true eval.judge_model=gpt-4-1-dev`).
 
-## Content cache (within-run dedup)
+## Caches (optional but recommended)
 
-`web_fetch` / `pdf_read` use a per-question, disk-backed content cache so a URL
-fetched once during a question is not re-fetched for the rest of that question
-(by the same agent or by sibling swarm agents) — transparently (the model can't
-tell a hit from a live call). Every search and fetch is otherwise **live**;
-there is no cross-run cache.
+`web_fetch`/`pdf_read` and `web_search` share optional cross-run SQLite caches
+so a URL fetched (or query run) once is never repeated — transparently (the
+model can't tell a hit from a live call). They are plain local SQLite files at a
+configurable path; the example root below is **`/data/cache/`**:
+`fetch_cache.sqlite` + `search_cache.sqlite` (override via `fetch_cache_path` /
+`search_cache_db` settings, `ARCTICSWARM_FETCH_CACHE` env, or `web.*`). Each
+opens lazily and disables itself if the path isn't writable, so the defaults are
+safe even when absent.
 
-- **Location:** `{eval.output}/cache/content/<case_id>/`. Enabled by default;
-  set `enable_content_cache=false` to disable.
-- **Scope:** per question only — entries are never shared across questions or
-  runs, so each new run re-fetches live.
+- **Seed the fetch cache:** `python scripts/build_fetch_cache.py --source '<results>/*/cache/content' --db /data/cache/fetch_cache.sqlite`
+- If the path is ephemeral, point `fetch_cache_path` / `ARCTICSWARM_FETCH_CACHE`
+  at a persistent disk (or symlink the root).
 
-See README §8 for more on how the within-run content cache works.
+Snowflake-cluster specifics (S3 auto-restore, the node-local mirror, our exact
+paths, the seeding/ship scripts) live in
+[snowflake/snowflake_specific.md](snowflake/snowflake_specific.md). See
+README §6 for more on how the caches work.

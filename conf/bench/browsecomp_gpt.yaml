@@ -37,6 +37,13 @@ llm:
   max_turns: 1200
 
 eval:
+  # NOTE: was ``gpt-4-1-dev`` which 400s with ``unknown model`` on every
+  # case (see docs/analysis-gpt5.4-failure/12_run_config_artifacts.md
+  # Artifact A — `0423_gpt5.4_therest_azure_real` was 90/90 wrong purely
+  # because the judge couldn't be invoked).  Pinned to the canonical
+  # Cortex-proxy name; verify the resolved name in
+  # ``resolved_config.yaml`` after a dry-run before kicking off a full
+  # eval (Fix F10).
   judge_model: openai-gpt-4.1
   csv_path: arcticswarm/eval/data/browsecomp_subset_representative.csv
   datasets: [BROWSECOMP_V1]

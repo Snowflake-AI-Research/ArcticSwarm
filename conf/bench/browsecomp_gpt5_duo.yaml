@@ -7,8 +7,8 @@
 #
 # Usage:
 #   arcticswarm-eval --config conf/bench/browsecomp_gpt5_duo.yaml \
-#     eval.csv_path=arcticswarm/eval/data/browsecomp_subset_representative.csv \
-#     eval.output=results/<run_name> \
+#     eval.csv_path=arcticswarm/eval/data/browsecomp_balanced_split1.csv \
+#     eval.output=results/0518_gpt5_duo_full_1 \
 #     odl.hybrid_url=http://127.0.0.1:5002
 
 prompt_style: web
@@ -68,7 +68,6 @@ eval:
   parallel: 18
   timeout: 9000
   checkpoint_interval: 1
-  # public OpenAI GPT-4.1 judge; needs OPENAI_API_KEY in config_files.json (or set azure.enabled + your Azure deployment)
-  judge_model: openai-gpt-4.1
+  judge_model: gpt-4-1-dev
   gated_retry: false
   max_retries: 2

@@ -1,4 +1,4 @@
-# ArcticSwarm eval runtime dependencies.
+# ArcticSwarm / snowswarm eval runtime dependencies.
 #
 # Pinned to the versions validated for BrowseComp / BrowseComp-Plus eval runs
 # (Python 3.11+; validated on 3.12). This mirrors the package set declared in

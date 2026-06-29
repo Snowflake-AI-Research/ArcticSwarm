@@ -80,6 +80,15 @@ _DEFAULT_SF_CONNECTION = "default"
 _CONNECTIONS_TOML = Path.home() / ".snowflake" / "connections.toml"
 _SETTINGS_JSON = Path("config_files.json")
 
+# Default location of the global, cross-run web_fetch/pdf_read cache (a single
+# SQLite file). A plain local SQLite at a configurable path; it lives next to
+# the search cache so both share one cache root. Override via settings
+# ``fetch_cache_path`` / env ARCTICSWARM_FETCH_CACHE / ``web.fetch_cache_path``;
+# set empty to disable. Opens lazily and degrades to disabled if the path isn't
+# writable, so this default is always safe. See snowflake/snowflake_specific.md
+# for the Snowflake-cluster S3-restore/node-mirror setup.
+_DEFAULT_FETCH_CACHE_PATH = "/data/cache/fetch_cache.sqlite"
+
 
 # ---------------------------------------------------------------------------
 # Settings file helper
@@ -645,18 +654,41 @@ class ArcticswarmConfig:
     # Populated from ``eval.output`` when running via the eval CLI.
     output_dir: str = ""
 
-    # Path to a custom judge-rubric template (.txt) for custom-dataset eval.
-    # When set, the LLM judge uses this template for EVERY case, overriding the
-    # built-in per-dataset prompts.  The template may reference ``{question}``,
-    # ``{response}``, and ``{correct_answer}`` placeholders.  Empty (the
-    # default) keeps the built-in QA / BrowseComp judges.  Populated from
-    # ``eval.custom_judge_prompt`` when running via the eval CLI.
-    custom_judge_prompt: str = ""
-
     # Content cache for web_fetch / pdf_read deduplication.
     # When True, results are cached to disk under {output_dir}/cache/content/
     # and shared across all agents working on the same question.
     enable_content_cache: bool = True
+    # Seamless search-result cache (arcticswarm/tools/search_cache.py).
+    # A plain local SQLite at a configurable path; shares a cache root with the
+    # fetch cache (see fetch_cache_path).
+    enable_search_cache: bool = True
+    search_cache_db: str = "/data/cache/search_cache.sqlite"
+    # False = bypass cache reads (always live) but still write-through/refresh.
+    search_cache_read: bool = True
+    # Node-local cache mirror for multi-host runs: mirror the shared caches to
+    # node-local disk and sync deltas back periodically. Avoids the
+    # SIGBUS / deadlock from a shared WAL SQLite on a network filesystem (e.g.
+    # Lustre) across hosts. See arcticswarm/tools/cache_sync.py.
+    #
+    # Default True = "mirror automatically whenever caching is enabled AND
+    # node-local fast storage exists" (the eval CLI gates on cache_local_dir's
+    # mount being present, so a dev box / CPU pod without a fast-disk mount
+    # silently uses the master cache directly). Set False to force the mirror
+    # off. Empty cache_local_dir disables the mirror unless a fast-disk mount
+    # exists. See snowflake/snowflake_specific.md for the Snowflake-cluster
+    # node-mirror setup (paths, bucket).
+    cache_local_mirror: bool = True
+    cache_local_dir: str = ""
+    cache_sync_every: int = 5
+
+    # Global, cross-run web_fetch / pdf_read cache: a single SQLite file shared
+    # by EVERY run on the machine, so a URL fetched (or PDF read) once is never
+    # re-fetched. Layered under the per-question cache: read global-first,
+    # write successes through. Failures are never stored globally (so a
+    # transient network error never poisons future runs); on key conflict the
+    # longer content wins. Empty string disables it. See
+    # arcticswarm/tools/content_cache.py and scripts/build_fetch_cache.py.
+    fetch_cache_path: str = _DEFAULT_FETCH_CACHE_PATH
 
     # --- Declarative tool lists (populated from YAML ToolsConfig) ----------
     # When non-empty, these lists drive tool registration instead of boolean
@@ -799,6 +831,16 @@ class ArcticswarmConfig:
         # Account for Cortex (agent:run)
         cortex_account = settings.get("cortex_account", "") or os.environ.get("CORTEX_ACCOUNT", "")
 
+        # Global cross-run fetch cache (SQLite). Precedence: settings file, then
+        # env var, then the built-in default. An explicit empty string in
+        # settings/env disables it.
+        if "fetch_cache_path" in settings:
+            fetch_cache_path = settings.get("fetch_cache_path", "")
+        elif "ARCTICSWARM_FETCH_CACHE" in os.environ:
+            fetch_cache_path = os.environ.get("ARCTICSWARM_FETCH_CACHE", "")
+        else:
+            fetch_cache_path = _DEFAULT_FETCH_CACHE_PATH
+
         # Azure OpenAI credentials (optional)
         azure_openai_api_key = (
             settings.get("AZURE_OPENAI_API_KEY", "")
@@ -846,4 +888,5 @@ class ArcticswarmConfig:
             tavily_api_key=tavily_api_key,
             cortex_account=cortex_account,
             enable_1m_context_model=enable_1m_context_model,
+            fetch_cache_path=fetch_cache_path,
         )

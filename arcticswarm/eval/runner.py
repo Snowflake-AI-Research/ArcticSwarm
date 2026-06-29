@@ -511,14 +511,17 @@ def _run_agent(
         if agent_ref is not None: # store agent instance for partial trajectory record
             agent_ref[0] = agent
 
-        # Set up content cache for same-agent / cross-agent within-question
-        # dedup (even without swarm). Engages when a per-question output dir is
-        # configured.
-        if getattr(config, "enable_content_cache", True) and config.output_dir:
+        # Set up content cache for same-agent dedup (even without swarm).
+        # Engages when a per-question output dir OR the global fetch cache is
+        # configured (cache_dir=None => global-only).
+        if getattr(config, "enable_content_cache", True) and (
+            config.output_dir or getattr(config, "fetch_cache_path", "")
+        ):
             from arcticswarm.tools.content_cache import ContentCache
             safe_id = case.conv_id.replace("/", "_").replace("\\", "_")[:200]
             agent.content_cache = ContentCache(
                 cache_dir=config.output_dir or None, case_id=safe_id,
+                global_db_path=getattr(config, "fetch_cache_path", ""),
             )
             agent._register_tools()
 
@@ -713,11 +716,14 @@ def _run_swarm(
         orchestrator_ref[0] = orchestrator
 
     # Set up per-question content cache (isolated by conv_id)
-    if getattr(config, "enable_content_cache", True) and config.output_dir:
+    if getattr(config, "enable_content_cache", True) and (
+        config.output_dir or getattr(config, "fetch_cache_path", "")
+    ):
         from arcticswarm.tools.content_cache import ContentCache
         safe_id = case.conv_id.replace("/", "_").replace("\\", "_")[:200]
         orchestrator._content_cache = ContentCache(
             cache_dir=config.output_dir or None, case_id=safe_id,
+            global_db_path=getattr(config, "fetch_cache_path", ""),
         )
 
     swarm_result = _SwarmResult()

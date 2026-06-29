@@ -1,6 +1,6 @@
 # BrowseComp-Plus benchmark — dynamic swarm with a Snowflake Cortex Search corpus.
 # Replaces live web search/fetch with queries against a static ~100K document corpus.
-# Usage: arcticswarm-eval --config conf/bench/browsecomp_plus_high.yaml eval.output=results/browsecomp_plus
+# Usage: arcticswarm-eval --config conf/browsecomp_plus.yaml eval.output=results/browsecomp_plus
 
 tools:
   agent: [read_file, calculator, web_search, web_fetch, python_execute, load_skill]
@@ -27,7 +27,7 @@ web:
   # The BrowseComp-Plus numbers in the paper used Snowflake Cortex Search
   # whose coordinates would be supplied (commented) below. To reproduce against
   # such a service, set corpus_backend: cortex and fill in the placeholders
-  # (needs a PAT in ~/.snowflake/connections.toml [default]). To plug your own
+  # (needs a PAT in ~/.snowflake/connections.toml [ml_data]). To plug your own
   # search service, set corpus_backend: local and corpus_local_path to a corpus JSONL.
   corpus_backend: stub
   # corpus_backend: cortex
@@ -52,8 +52,7 @@ azure:
   enabled: false
 
 eval:
-  # public OpenAI GPT-4.1 judge; needs OPENAI_API_KEY in config_files.json (or set azure.enabled + your Azure deployment)
-  judge_model: openai-gpt-4.1
+  judge_model: gpt-4-1-dev
   csv_path: arcticswarm/eval/data/browsecomp_plus_subset_representative.csv
   datasets: [BROWSECOMP_PLUS_V1]
   parallel: 18

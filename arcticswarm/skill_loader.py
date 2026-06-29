@@ -1,11 +1,15 @@
 """Local skill loading with tool-based progressive disclosure.
 
 Reads SKILL.md files from the local filesystem and provides a
-:class:`SkillRegistry` for discovery and loading.
+:class:`SkillRegistry` for discovery and loading — matching the pattern
+used by the cortex Go orchestrator (``ServerSkillTool``).
 
 Two-stage progressive disclosure:
   1. Tool description lists all available skills (name + description)
   2. Agent calls ``load_skill(skill_name=...)`` to get full instructions
+
+See ``DIFFERENCES.md`` in this directory for remaining gaps vs the
+cortexagent implementation and the rationale for each.
 """
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
 # ---------------------------------------------------------------------------
-# Data classes
+# Data classes (matching SI's EmbeddedSkill / SkillFileInfo)
 # ---------------------------------------------------------------------------
 
 
@@ -52,7 +56,10 @@ class SkillFileInfo:
 
 @dataclass
 class LoadedSkill:
-    """A fully loaded skill with content and file listing."""
+    """A fully loaded skill with content and file listing.
+
+    Mirrors cortexagent's ``EmbeddedSkill`` struct.
+    """
     metadata: dict[str, str]
     content: str
     file_list: list[SkillFileInfo] = field(default_factory=list)
@@ -65,7 +72,10 @@ class LoadedSkill:
 
 
 def normalize_skill_name(name: str) -> str:
-    """Normalize a skill name for comparison (lowercase + strip)."""
+    """Normalize a skill name for comparison (lowercase + strip).
+
+    Matches SI's ``normalizeSkillName()``.
+    """
     return name.strip().lower()
 
 
@@ -133,7 +143,8 @@ class SkillRegistry:
 
     Walks ``skills_dir`` at init time to find all sub-directories
     containing a ``SKILL.md`` file.  Provides methods to list, look up,
-    and fully load skills.
+    and fully load skills — matching the cortexagent
+    ``ServerSkillTool`` / sandbox ``SkillExecutor`` patterns.
     """
 
     def __init__(
@@ -180,7 +191,8 @@ class SkillRegistry:
     def configure(self, enabled_skills: list[str]) -> None:
         """Restrict the registry to only the given skills.
 
-        Caches the config to skip redundant reconfiguration.
+        Caches the config to skip redundant reconfiguration (matching
+        sandbox ``SkillExecutor``'s ``_last_config`` pattern).
         """
         if self._last_config == enabled_skills:
             return
@@ -236,7 +248,10 @@ class SkillRegistry:
     # -- full load -----------------------------------------------------------
 
     def load_skill(self, name: str) -> LoadedSkill:
-        """Fully load a skill: content, metadata, file listing, path prefix."""
+        """Fully load a skill: content, metadata, file listing, path prefix.
+
+        Mirrors cortexagent ``loadEmbeddedSkill()``.
+        """
         loc = self.get(name)
         if loc is None:
             raise FileNotFoundError(f"Skill not found: {name}")
@@ -331,7 +346,7 @@ def get_all_skill_metadata(
 
 
 # ---------------------------------------------------------------------------
-# Tool description construction (compact legacy format)
+# Tool description construction (SI-style format)
 # ---------------------------------------------------------------------------
 
 
@@ -341,7 +356,7 @@ def build_load_skill_tool_description_legacy(
 ) -> str:
     """Old compact format: 2-line intro + self-closing ``<skill .../>`` tags.
 
-    Kept for A/B comparison against the current nested-XML format.
+    Used for A/B comparison against the SI-aligned format.
     """
     reg = registry or get_default_registry()
     lines = [
@@ -368,8 +383,9 @@ def build_load_skill_tool_description(
 ) -> str:
     """Build the ``load_skill`` tool description with available skills.
 
-    Uses a nested-XML format: ``<skill><name>/<description>`` entries
-    wrapped in a ``<skills_instructions>`` block.
+    Uses the cortexagent ``ServerSkillTool`` format: nested
+    ``<skill><name>/<description>`` XML wrapped in a
+    ``<skills_instructions>`` block.
     """
     reg = registry or get_default_registry()
 

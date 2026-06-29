@@ -1,11 +1,9 @@
-"""Thin wrapper around ``snowflake-connector-python`` for the **optional**
-Cortex Search integration.
+"""Thin wrapper around ``snowflake-connector-python``.
 
 Reads connection parameters from ``~/.snowflake/connections.toml`` (via
 :pymod:`arcticswarm.config`) and exposes the session connection plus the
 REST-auth helpers used by Cortex Search (``_get_rest_url`` / ``_get_token`` /
-``_get_account``). ArcticSwarm runs fully without Snowflake — this module is
-only imported when a Cortex corpus/web-search backend is configured.
+``_get_account``).
 """
 
 from __future__ import annotations
@@ -25,9 +23,9 @@ logger = logging.getLogger(__name__)
 def _get_snowflake_connector() -> Any:
     """Import snowflake.connector lazily.
 
-    Most runs never touch Snowflake — it backs only the optional Cortex Search
-    integration — so importing the connector only when a real connection is
-    needed avoids an unnecessary hard dependency in minimal environments.
+    Harbor SWE-bench tasks do not use Snowflake at all, so importing the connector
+    only when a real connection is needed avoids unnecessary binary dependency
+    failures in minimal task containers.
     """
     import snowflake.connector
 
