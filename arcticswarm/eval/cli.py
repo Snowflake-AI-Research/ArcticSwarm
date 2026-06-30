@@ -643,7 +643,16 @@ def main() -> None:
 
                     # Load per-case dicts from prior report for timeout detection
                     _prior_case_dicts: dict[str, dict] = {}
-                    _prior_timeout: float = ev.timeout  # fallback to current
+                    # Timeout threshold = the configured eval.timeout for THIS
+                    # rerun (pass the same eval.timeout as the original run).
+                    # NOTE: this used to be *inferred* from max(duration)
+                    # (max_dur-300, or max_dur*0.9 for a single max). That broke
+                    # whenever an earlier rerun_timeouts pass had already double-run
+                    # a case to ~2x the limit: max_dur then sat near ~18000s, so the
+                    # inferred threshold (~16700s) sat far above the real ~9000s wall
+                    # and only the single longest case got re-flagged (the "1 rerun
+                    # instead of ~30" bug). Use the explicit configured value.
+                    _prior_timeout: float = ev.timeout
                     if ev.rerun_timeouts:
                         _prior_report_path = output_dir / "report.json"
                         if _prior_report_path.exists():
@@ -651,30 +660,11 @@ def main() -> None:
                                 _prior_data = json.loads(_prior_report_path.read_text())
                                 for _pc in _prior_data.get("per_case", []):
                                     _prior_case_dicts[_pc.get("conv_id", "")] = _pc
-                                # Infer the original timeout from the data: the
-                                # timeout wall is max(duration) - 300 (wrap-up).
-                                # Cases clustered at max duration are timeouts.
-                                _all_durs = [
-                                    _pc.get("duration_seconds", 0)
-                                    for _pc in _prior_data.get("per_case", [])
-                                ]
-                                if _all_durs:
-                                    _max_dur = max(_all_durs)
-                                    # Count how many cases hit the max duration wall
-                                    _at_wall = sum(1 for d in _all_durs if d >= _max_dur - 1)
-                                    if _at_wall >= 2:
-                                        # Multiple cases at the same max = timeout wall
-                                        # Subtract wrap-up period (300s) to get original timeout
-                                        _prior_timeout = _max_dur - 300
-                                    else:
-                                        # Single max case — use 90% of max as threshold
-                                        _prior_timeout = _max_dur * 0.9
-                                    logger.info(
-                                        "Inferred prior timeout: %.0fs (max_dur=%.0fs, %d cases at wall)",
-                                        _prior_timeout, _max_dur, _at_wall,
-                                    )
                             except Exception:
                                 pass
+                        logger.info(
+                            "rerun_timeouts threshold: %.0fs (eval.timeout)", _prior_timeout,
+                        )
 
                     for r in complete_results:
                         should_rerun = False
