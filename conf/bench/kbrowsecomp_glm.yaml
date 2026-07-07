@@ -91,6 +91,12 @@ llm:
   # Friendly alias; on a vLLM endpoint the served id is used automatically
   # (see llm_client._normalize_model — bare alias maps to served_model_id).
   model: "glm-5.1"
+  # The vLLM server's exact registered model id (from GET <base_url>/v1/models).
+  # REQUIRED for non-Qwen vLLM models: the client otherwise defaults to the
+  # hardcoded Qwen served id ("Qwen/Qwen3.5-27B") and every call 404s. The GLM 5
+  # server registers this as "glm-5-think" (root zai-org/GLM-5-FP8). Override
+  # with llm.vllm_served_model_id=... if your server registers a different id.
+  vllm_served_model_id: "glm-5-think"
   # vLLM OpenAI-compatible endpoint (must end in /v1). In-cluster DNS by
   # default; see header for the port-forward alternative. Point this at the
   # GLM 5.1 server.
