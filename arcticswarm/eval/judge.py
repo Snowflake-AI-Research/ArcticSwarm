@@ -179,6 +179,7 @@ class LLMJudge:
         self._browsecomp_plus_prompt = (_PROMPTS_DIR / "browsecomp_plus_eval.txt").read_text()
         self._evobrowsecomp_prompt = (_PROMPTS_DIR / "evobrowsecomp_eval.txt").read_text()
         self._seal0_prompt = (_PROMPTS_DIR / "seal0_eval.txt").read_text()
+        self._kbrowsecomp_prompt = (_PROMPTS_DIR / "kbrowsecomp_eval.txt").read_text()
 
     # ----- QA mode ----------------------------------------------------------
 
@@ -512,8 +513,39 @@ class LLMJudge:
             raw_output=raw,
         )
 
-    # ----- LLM call ---------------------------------------------------------
+    # ----- K-BrowseComp mode ------------------------------------------------
+    def judge_kbrowsecomp(
+        self,
+        question: str,
+        answer: str,
+        expected_answer: str,
+    ) -> QAJudgeResult:
+        """Run the K-BrowseComp (Korean BrowseComp) judge.
 
+        Uses the authors' verbatim Korean-aware grader (a SimpleQA/HLE-style
+        rubric emitting ``correct: yes|no``): the judge tolerates harmless
+        surface-form variants (Hanja, romanization, transliteration, appositive
+        glosses) but marks disjunctions ("또는" / "or" / "/") as incorrect. The
+        output format matches BrowseComp's, so we reuse
+        :meth:`_parse_browsecomp_output`. Returns a :class:`QAJudgeResult`.
+        """
+        if not answer:
+            return QAJudgeResult(
+                correct=False,
+                comment="Agent produced no answer.",
+                raw_output="",
+            )
+
+        prompt = self._kbrowsecomp_prompt.format(
+            question=question,
+            answer=answer,
+            expected_answer=expected_answer,
+        )
+
+        raw = self._call_llm(prompt)
+        return self._parse_browsecomp_output(raw)
+
+    # ----- LLM call ---------------------------------------------------------
     def _call_llm(
         self,
         prompt: str,
