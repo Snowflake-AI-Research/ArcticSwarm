@@ -46,6 +46,7 @@ Anthropic / OpenAI endpoints are the default.
 | `BROWSECOMP_V1`       | BrowseComp       | `eval/data/browsecomp_v1.csv` (+ subset CSVs) |
 | `BROWSECOMP_PLUS_V1`  | BrowseComp-Plus  | `eval/data/browsecomp_plus_v1.csv` (+ subsets) |
 | `EVOBROWSECOMP_V1`    | EvoBrowseComp    | `eval/data/evobrowsecomp_v1.csv` (English, 400) |
+| `SEAL0_V1`            | SEAL-0 (SealQA)  | `eval/data/seal0_v1.csv` (111) |
 
 Select the question set with `eval.csv_path=...` and cap cases with
 `eval.limit=N`. Each dataset is scored by its dedicated LLM judge
