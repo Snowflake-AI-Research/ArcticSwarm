@@ -178,6 +178,7 @@ class LLMJudge:
         self._browsecomp_prompt = (_PROMPTS_DIR / "browsecomp_eval.txt").read_text()
         self._browsecomp_plus_prompt = (_PROMPTS_DIR / "browsecomp_plus_eval.txt").read_text()
         self._evobrowsecomp_prompt = (_PROMPTS_DIR / "evobrowsecomp_eval.txt").read_text()
+        self._seal0_prompt = (_PROMPTS_DIR / "seal0_eval.txt").read_text()
 
     # ----- QA mode ----------------------------------------------------------
 
@@ -446,6 +447,69 @@ class LLMJudge:
             comment=explanation or raw,
             raw_output=raw,
             extracted_final_answer=final_answer,
+        )
+
+    # ----- SEAL-0 mode ------------------------------------------------------
+    def judge_seal0(
+        self,
+        question: str,
+        answer: str,
+        expected_answer: str,
+    ) -> QAJudgeResult:
+        """Run the SEAL-0 (SealQA) judge.
+
+        Uses the verbatim grader template from the SealQA authors' grading
+        Colab (a SimpleQA-style rubric): the judge emits a single letter
+        ``A`` (CORRECT) / ``B`` (INCORRECT) / ``C`` (NOT_ATTEMPTED).  Only
+        ``A`` counts as correct — NOT_ATTEMPTED scores as not-correct, matching
+        the paper's reported accuracy (fraction of CORRECT).  Returns a
+        :class:`QAJudgeResult`.
+        """
+        if not answer:
+            return QAJudgeResult(
+                correct=False,
+                comment="Agent produced no answer.",
+                raw_output="",
+            )
+
+        prompt = self._seal0_prompt.format(
+            question=question,
+            target=expected_answer,
+            predicted_answer=answer,
+        )
+
+        # Paper grades at temperature 0.0.
+        raw = self._call_llm(prompt, temperature=0.0)
+        return self._parse_seal0_output(raw)
+
+    @staticmethod
+    def _parse_seal0_output(raw: str) -> QAJudgeResult:
+        """Parse the SEAL-0 grader's single-letter verdict (A/B/C).
+
+        A = CORRECT, B = INCORRECT, C = NOT_ATTEMPTED.  Only A is correct.
+        Scans for the first standalone A/B/C letter (matching the authors'
+        ``re.search(r"(A|B|C)")``); if the grader spelled the verdict out
+        instead, fall back to the word form (INCORRECT before CORRECT so the
+        substring never misreads).  An unparseable verdict defaults to C
+        (not-correct), the conservative behavior.
+        """
+        match = re.search(r"\b([ABC])\b", raw)
+        if match:
+            letter = match.group(1)
+        elif re.search(r"NOT[_\s]*ATTEMPTED", raw, re.IGNORECASE):
+            letter = "C"
+        elif re.search(r"\bINCORRECT\b", raw, re.IGNORECASE):
+            letter = "B"
+        elif re.search(r"\bCORRECT\b", raw, re.IGNORECASE):
+            letter = "A"
+        else:
+            m = re.search(r"([ABC])", raw)
+            letter = m.group(1) if m else "C"
+        grade = {"A": "CORRECT", "B": "INCORRECT", "C": "NOT_ATTEMPTED"}[letter]
+        return QAJudgeResult(
+            correct=(letter == "A"),
+            comment=grade,
+            raw_output=raw,
         )
 
     # ----- LLM call ---------------------------------------------------------
