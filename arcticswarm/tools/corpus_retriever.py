@@ -386,7 +386,7 @@ def build_corpus_retriever(config: Any, sf_client: Any = None) -> CorpusRetrieve
             schema=getattr(config, "corpus_schema", ""),
             chunked_service=getattr(config, "corpus_chunked_service", ""),
             non_chunked_service=getattr(config, "corpus_service", ""),
-            api_key=getattr(config, "api_key", ""),
+            api_key="",  # corpus auth uses the Snowflake session/PAT, NOT the general LLM api_key (restores original snowswarm routing)
             sf_client=sf_client,
             pat_connection=getattr(config, "corpus_pat_connection", "ml_data") or "ml_data",
         )
