@@ -38,6 +38,7 @@ from __future__ import annotations
 import abc
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -109,9 +110,32 @@ class StubCorpusRetriever(CorpusRetriever):
 # ---------------------------------------------------------------------------
 
 
+def _connections_toml_path() -> Path:
+    """Resolve the connections.toml path, in precedence order:
+
+    1. ``$SNOWFLAKE_CONNECTIONS_FILE`` — explicit path to a connections.toml.
+    2. ``$SNOWFLAKE_HOME/connections.toml`` — standard Snowflake config home.
+    3. ``~/.snowflake/connections.toml`` — the default.
+
+    Lets a shared/network path be used (e.g. on ephemeral pods whose home
+    directory is not persistent) without copying the file into every home.
+    """
+    explicit = os.environ.get("SNOWFLAKE_CONNECTIONS_FILE", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    sf_home = os.environ.get("SNOWFLAKE_HOME", "").strip()
+    if sf_home:
+        return Path(sf_home).expanduser() / "connections.toml"
+    return Path.home() / ".snowflake" / "connections.toml"
+
+
 def _load_pat_from_connections(connection_name: str = "ml_data") -> str | None:
-    """Try to load a PAT from ``~/.snowflake/connections.toml``."""
-    p = Path.home() / ".snowflake" / "connections.toml"
+    """Try to load a PAT from the resolved connections.toml.
+
+    Path is resolved by :func:`_connections_toml_path` (env-overridable;
+    defaults to ``~/.snowflake/connections.toml``).
+    """
+    p = _connections_toml_path()
     if not p.exists():
         return None
     try:
