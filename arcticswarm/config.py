@@ -711,9 +711,23 @@ class ArcticswarmConfig:
         """Return True if web search is enabled AND a viable provider exists."""
         if not self.web_search_enabled:
             return False
-        if self.web_search_provider in (
-            "corpus", "cortex-corpus", "cortex", "cortex-grounding",
-        ):
+        # Corpus backends authenticate independently of the Cortex agent:run
+        # path: "local" reads a JSONL file, and "cortex" authenticates with a
+        # PAT from ~/.snowflake/connections.toml (corpus_pat_connection) using
+        # corpus_account/db/schema — NOT sf_params or cortex_account. Gate on
+        # the corpus coordinates instead so browsing subagents aren't refused.
+        if self.web_search_provider in ("corpus", "cortex-corpus"):
+            backend = (getattr(self, "corpus_backend", "") or "stub").strip().lower()
+            if backend == "local":
+                return bool(getattr(self, "corpus_local_path", "").strip())
+            if backend == "cortex":
+                return bool(
+                    self.corpus_account.strip()
+                    and self.corpus_db.strip()
+                    and self.corpus_schema.strip()
+                )
+            return False  # stub -> no real retrieval
+        if self.web_search_provider in ("cortex", "cortex-grounding"):
             return bool(self.sf_params) or (bool(self.api_key.strip()) and bool(self.cortex_account.strip()))
         has_brave = bool(self.brave_api_key.strip())
         has_tavily = bool(self.tavily_api_key.strip())
