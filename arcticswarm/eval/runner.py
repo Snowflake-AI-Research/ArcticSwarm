@@ -154,6 +154,7 @@ CANONICAL_METRIC_ONLY_DATASETS = frozenset([
     "BROWSECOMP_V1",  # OpenAI's BrowseComp benchmark - uses specialized binary judge
     "EVOBROWSECOMP_V1",  # EvoBrowseComp benchmark - uses specialized binary judge
     "SEAL0_V1",  # SEAL-0 (SealQA) benchmark - uses specialized A/B/C SimpleQA-style judge
+    "KBROWSECOMP_V1",  # K-BrowseComp (Korean BrowseComp) - uses specialized binary yes/no judge
     "HYBRID_V1",  # Hybrid (search + SQL): SQL-result comparison or browsecomp text judge
 ])
 
@@ -1931,6 +1932,7 @@ def judge_result(
     For BROWSECOMP_V1 / BROWSECOMP_PLUS_V1 / SDEEPRESEARCH_V1, we use the specialized browsecomp judge.
     For EVOBROWSECOMP_V1, we use the EvoBrowseComp judge (Final Answer / Explanation / Conclusion).
     For SEAL0_V1, we use the SEAL-0 judge (SimpleQA-style A/B/C grader from the SealQA authors).
+    For KBROWSECOMP_V1, we use the K-BrowseComp judge (Korean-aware binary yes/no grader).
     The answer-only judge always runs alongside — it evaluates purely on
     final answer correctness (0/1/2), ignoring methodology and tool usage.
     """
@@ -1963,6 +1965,14 @@ def judge_result(
         # Use the SEAL-0 judge (verbatim SimpleQA-style grader from the SealQA
         # authors' grading Colab; A=CORRECT / B=INCORRECT / C=NOT_ATTEMPTED)
         result.qa_result = judge.judge_seal0(
+            question=case.question,
+            answer=result.response_text,
+            expected_answer=case.reference_answer,
+        )
+    elif dataset == "KBROWSECOMP_V1":
+        # Use the K-BrowseComp judge (authors' verbatim Korean-aware grader;
+        # correct: yes|no, tolerant of surface-form variants, disjunctions = no)
+        result.qa_result = judge.judge_kbrowsecomp(
             question=case.question,
             answer=result.response_text,
             expected_answer=case.reference_answer,

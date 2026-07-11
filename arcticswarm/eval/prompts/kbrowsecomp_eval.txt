@@ -1,0 +1,40 @@
+Judge whether the following [response] to [question] is correct or not based on the precise and unambiguous [correct_answer] below.
+
+[question]: {question}
+
+[response]: {answer}
+
+Your judgement must be in the format and criteria specified below:
+
+extracted_final_answer: The final exact answer extracted from the [response]. Put the extracted answer as 'None' if there is no exact, final answer to extract from the response.
+- When the response gives a canonical answer followed by harmless surface-form variants (e.g. a Hanja form, a romanization, an English gloss, or a parenthetical descriptor), extract only the canonical answer.
+- Harmless surface-form differences include markdown, punctuation, whitespace, quote marks, case, parenthetical romanization, English transliterations/glosses, Hanja/alternate script, and appositive descriptors that name the same referent.
+- However, if the response lists multiple distinct candidates, alternatives, or disjunctions (for example using "or", "/", "또는"), do not collapse them into one — preserve the ambiguity and judge it incorrect.
+
+[correct_answer]: {expected_answer}
+
+reasoning: Explain why the extracted_final_answer is correct or incorrect based on [correct_answer], focusing only on if there are meaningful differences between [correct_answer] and the extracted_final_answer. Ignore harmless surface-form differences (markdown, punctuation, whitespace, case, romanization, transliteration, Hanja/alternate script, appositive descriptors). Do not comment on any background to the problem, do not attempt to solve the problem, do not argue for any answer different than [correct_answer], focus only on whether the answers match.
+
+correct: Answer 'yes' if extracted_final_answer matches the [correct_answer] given above, or is within a small margin of error for numerical problems. Treat harmless surface-form differences as matches. Answer 'no' otherwise, i.e. if there is any inconsistency, ambiguity, non-equivalency, or if the extracted answer is incorrect.
+
+confidence: The extracted confidence score between 0% and 100% from [response]. Put 100 if there is no confidence score available.
+
+Here are some examples of how to judge:
+
+[correct_answer]: 세마고등학교
+[response]: 세마고등학교 (Sema High School, 洗馬高等學校)
+extracted_final_answer: 세마고등학교
+reasoning: The extracted answer "세마고등학교" matches the correct answer. The romanization "Sema High School" and Hanja "洗馬高等學校" are harmless surface-form variants of the same referent.
+correct: yes
+
+[correct_answer]: 세마고등학교
+[response]: 세마고등학교 또는 운정고등학교
+extracted_final_answer: 세마고등학교 또는 운정고등학교
+reasoning: The response lists two distinct candidates joined by "또는" (or). The ambiguity is preserved and does not unambiguously match the single correct answer.
+correct: no
+
+[correct_answer]: 42
+[response]: The answer is approximately 42.
+extracted_final_answer: 42
+reasoning: The extracted numeric answer 42 matches the correct answer exactly.
+correct: yes

@@ -1925,15 +1925,16 @@ def detect_provider(model: str) -> str:
     """Return ``'vllm'``, ``'openai'``, or ``'anthropic'`` based on model name.
 
     ``'vllm'`` covers self-hosted, OpenAI-Chat-compatible deployments served
-    by vLLM — Qwen3.5 (``"qwen"``) and Alibaba Tongyi DeepResearch
-    (``"tongyi"``).  Detection uses the same lowercase substring convention
-    relied on by ``system_prompt.py`` and ``run_config.py`` for
+    by vLLM — Qwen3.5 (``"qwen"``), Alibaba Tongyi DeepResearch (``"tongyi"``),
+    and Zhipu GLM (``"glm"``).  Detection uses the same lowercase substring
+    convention relied on by ``system_prompt.py`` and ``run_config.py`` for
     provider-specific prompting/skills.  Tongyi-DeepResearch is
     Qwen3-architecture and is served with the same Qwen tool-call/reasoning
-    parsers, so it is treated as the Qwen vLLM family.
+    parsers, so it is treated as the Qwen vLLM family.  GLM (e.g. GLM 5.1) is
+    likewise served OpenAI-Chat-compatible via vLLM.
     """
     ml = model.lower()
-    if "qwen" in ml or "tongyi" in ml:
+    if "qwen" in ml or "tongyi" in ml or "glm" in ml:
         return "vllm"
     if model.startswith("openai-") or model.startswith("gpt-"):
         return "openai"

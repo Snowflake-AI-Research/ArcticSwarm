@@ -1,0 +1,141 @@
+# K-BrowseComp benchmark — dynamic swarm with web search, self-hosted GLM 5.1 (vLLM).
+#
+# K-BrowseComp is the Korean-language counterpart of OpenAI's BrowseComp
+# (arXiv 2606.02404; HF `prometheus-eval/k-browsecomp`): hard, fact-seeking
+# questions written + validated by native speakers that require multi-hop /
+# parallel web browsing. This config is the BrowseComp "full winning swarm"
+# (browsecomp_qwen.yaml / seal0_qwen.yaml) retargeted to K-BrowseComp on a
+# self-hosted GLM 5.1 vLLM endpoint: the WHOLE agent (orchestrator + every
+# subagent + compaction + source-scorer / content-compactor tool LLMs) runs on
+# the local GLM 5.1 endpoint.
+#
+# Judge: K-BrowseComp's own Korean-aware binary grader (verbatim from the
+# authors' `search_evals` grader; emits `correct: yes|no`, tolerant of
+# surface-form variants — Hanja / romanization / transliteration — but marks
+# disjunctions "또는" / "or" / "/" as incorrect), run on Azure GPT-4.1 — the
+# one closed-model call, post-hoc grading that never touches the trajectory.
+#
+# Caching (mirrors the seal0 run's requirements):
+#   * global cross-run fetch cache  -> OFF  (web.fetch_cache_path: "off")
+#   * global search-result cache    -> OFF  (web.enable_search_cache: false)
+#   * per-question local content cache (dedup within a single question) -> KEPT
+#
+# Usage (from a pod labeled dss=true so the in-cluster DNS resolves):
+#   arcticswarm-eval --config conf/bench/kbrowsecomp_glm.yaml \
+#     eval.output=results/kbrowsecomp_glm odl.hybrid_url=http://127.0.0.1:5003
+#
+# From a workspace that can't use in-cluster DNS, port-forward first
+#   kubectl port-forward -n <namespace> svc/<vllm-service> 9861:6789
+# and override: llm.agent_model_base_url=http://localhost:9861/v1
+
+prompt_style: web
+
+tools:
+  agent: [read_file, calculator, web_search, web_fetch, pdf_read, python_execute, load_skill]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research, tool-usage-policy-browsing]
+  profiles:
+    browsing:
+      tools: [read_file, calculator, web_search, web_fetch, pdf_read]
+      skills: [web-research, tool-usage-policy-browsing]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+swarm:
+  enabled: true
+  profiles: [browsing, reasoning]
+  enable_force_submit: false
+  auditor_reasoning_effort: "xhigh"
+  # Reviewer-diversity gate: require a VERIFIED #consensus verdict from BOTH a
+  # builder (a subagent that searched first-hand) AND the dedicated reasoning
+  # auditor before the final report is unlocked. Missing sources are
+  # auto-spawned + waited on (bounded by max_reviewer_remediations, then
+  # advisory-degrade so the run never hangs).
+  min_dedicated_reviewers: 1
+  min_builder_reviewers: 1
+  max_reviewer_remediations: 2
+  # Premature-commitment guard: require >=1 ALTERNATIVE/CONTRARIAN task before
+  # the report unlocks; PrepareReportTool auto-spawns an
+  # `alternative-candidate-sweep` task and waits (advisory-degrade on deadline).
+  enforce_alt_task: true
+
+# Complementary earlier contrarian path: fire the candidate-emergence rival
+# sweep as soon as a candidate lands on the BBS.
+enable_candidate_emergence_sweep: true
+
+# Anti-give-up + canonical-answer report behavior: emit the fullest canonical
+# answer form + honor the question's requested format, and bounce a refusal /
+# give-up FINAL ANSWER back for a committed retry (bounded). K-BrowseComp answers
+# always exist, so a give-up scores the same 0 as a committed wrong answer.
+# NOTE: K-BrowseComp answers are Korean short-form; the swarm should answer in
+# Korean (the question language) so surface forms match the gold answer.
+reject_refusal_reports: true
+
+web:
+  enabled: true
+  # Cap a single web_fetch/pdf_read result to ~5k tokens (~20K chars).
+  max_tool_output_tokens: 5000
+  # --- Caching: disable the two GLOBAL cross-run caches for this run ---
+  fetch_cache_path: "off"
+  enable_search_cache: false
+  search_cache_read: false
+  # NOTE: the per-question local content cache (swarm.enable_content_cache,
+  # default true) is intentionally LEFT ON.
+
+# Azure GPT-4.1 judge (the only closed-model call; post-hoc grading only).
+azure:
+  enabled: true
+
+llm:
+  # Friendly alias; on a vLLM endpoint the served id is used automatically
+  # (see llm_client._normalize_model — bare alias maps to served_model_id).
+  model: "glm-5.1"
+  # The vLLM server's exact registered model id (from GET <base_url>/v1/models).
+  # REQUIRED for non-Qwen vLLM models: the client otherwise defaults to the
+  # hardcoded Qwen served id ("Qwen/Qwen3.5-27B") and every call 404s. The GLM 5
+  # server registers this as "glm-5-think" (root zai-org/GLM-5-FP8). Override
+  # with llm.vllm_served_model_id=... if your server registers a different id.
+  vllm_served_model_id: "glm-5-think"
+  # vLLM OpenAI-compatible endpoint (must end in /v1). In-cluster DNS by
+  # default; see header for the port-forward alternative. Point this at the
+  # GLM 5.1 server.
+  agent_model_base_url: "http://localhost:6789/v1"
+  reasoning_effort: "xhigh"
+  subagent_reasoning_effort: "xhigh"
+  # --- GLM / vLLM knobs (verify against your GLM 5.1 serve command) ---
+  enable_thinking: true                 # GLM thinking mode (binary; xhigh => on)
+  # GLM thinking-mode recommended sampling. Adjust to your model card if GLM 5.1
+  # differs from the GLM 4.5/4.6 guidance below.
+  vllm_temperature: 1.0
+  vllm_top_p: 0.95
+  vllm_top_k: 40
+  vllm_presence_penalty: 0.0
+  # Set to the context length your GLM 5.1 vLLM server was launched with
+  # (--max-model-len). 131072 is a conservative default; raise if the server
+  # serves a longer window.
+  vllm_max_model_len: 131072
+  disable_closed_model_fallback: true   # no Claude/GPT calls during the run (judge is separate)
+  max_tokens: 32000
+  # Reactive compaction threshold; keep well below vllm_max_model_len with
+  # max_tool_output_tokens capping each tool result.
+  compact_tokens: 100000
+  max_tool_calls_per_turn: 1
+  # Orchestrator runs UNLIMITED tool calls per turn so its batched create_task
+  # fan-out + wait_for_tasks aren't silently truncated to 1.
+  orchestrator_max_tool_calls_per_turn: 0
+  # post_to_bbs always executes even when a subagent batches it past the cap.
+  always_execute_tools_per_turn: ["post_to_bbs"]
+  timeout: 1200
+  max_turns: 1200
+
+eval:
+  # K-BrowseComp's own Korean-aware binary grader run on Azure GPT-4.1.
+  # azure.enabled above routes the judge through the Azure OpenAI deployment;
+  # the deployment id is set here. Override to your own GPT-4.1 deployment name.
+  judge_model: "gpt-4-1-dev"
+  csv_path: arcticswarm/eval/data/kbrowsecomp_v1.csv
+  datasets: [KBROWSECOMP_V1]
+  parallel: 18
+  timeout: 6000
+  checkpoint_interval: 1

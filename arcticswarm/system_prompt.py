@@ -32,8 +32,11 @@ def build_system_prompt(
     otherwise the general-purpose identity is used.
     """
     # Tongyi-DeepResearch is Qwen3-architecture / served with the Qwen parsers,
-    # so it uses the same self-hosted-vLLM skill prompt variant as Qwen.
-    _use_qwen_skill_prompt = "qwen" in model.lower() or "tongyi" in model.lower()
+    # so it uses the same self-hosted-vLLM skill prompt variant as Qwen. GLM
+    # (e.g. GLM 5.1) is served the same OpenAI-Chat-compatible vLLM way.
+    _use_qwen_skill_prompt = (
+        "qwen" in model.lower() or "tongyi" in model.lower() or "glm" in model.lower()
+    )
 
     # Resolve the current date (respecting date_override for eval runs)
     if date_override:
