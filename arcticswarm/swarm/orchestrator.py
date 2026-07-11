@@ -1357,6 +1357,7 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
             enable_vision=self.config.enable_vision,
             pre_loaded_tasks=None,
             tool_profiles=self.config.tool_profiles,
+            disable_bbs_isolation=self.config.disable_bbs_isolation,
         )
 
         # Forward orchestrator events to the swarm UI.
