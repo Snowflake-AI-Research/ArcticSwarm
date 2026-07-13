@@ -113,7 +113,7 @@ llm:
   vllm_presence_penalty: 0.0
   vllm_max_model_len: 262144            # native 256K window
   disable_closed_model_fallback: true   # no Claude/GPT calls during the run
-  max_tokens: 32000
+  max_tokens: 16384                     # matches the 0710/0711/0712 baseline family (per-turn generation cap)
   compact_tokens: 180000                # matches baseline
   max_tool_calls_per_turn: 1
   # LIVE in DM: the DM orchestrator IS the orchestrator agent, so this override is
