@@ -115,7 +115,7 @@ llm:
   compact_tokens: 180000                # matches baseline
   max_tool_calls_per_turn: 1
   subagent_max_turns: 200               # LIVE: the duo auditor IS a SubAgent, so this bites
-  timeout: 1200                         # xhigh thinking on 27B is slow; avoid spurious idle timeouts
+  timeout: 120                          # matches the 0710 baseline family (per-model-call timeout; streaming -> per-read/stall)
   max_turns: 1200
 
 eval:

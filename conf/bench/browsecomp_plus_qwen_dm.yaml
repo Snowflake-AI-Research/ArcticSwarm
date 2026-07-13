@@ -120,7 +120,7 @@ llm:
   # honored — unlimited tool calls/turn so batched create_task isn't truncated.
   orchestrator_max_tool_calls_per_turn: 0
   subagent_max_turns: 200
-  timeout: 1200                         # xhigh thinking on 27B is slow; avoid spurious idle timeouts
+  timeout: 120                          # matches the 0710 baseline family (per-model-call timeout; streaming -> per-read/stall)
   max_turns: 1200
 
 eval:
