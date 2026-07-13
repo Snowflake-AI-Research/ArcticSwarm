@@ -314,6 +314,11 @@ class ArcticswarmConfig:
     auditor_model: str = ""
     # Reasoning effort for the auditor.  None = inherit from subagent.
     auditor_reasoning_effort: str | None = None
+    # When True, suppress the always-on dedicated auditor subagent (spawned
+    # on first task creation in dynamic/BBS mode) AND the reviewer-diversity
+    # gate's dedicated-reviewer auto-spawn, so the run has NO dedicated
+    # reviewers — only builder subagents run.  Guarded (raises) in duo mode.
+    disable_auditor: bool = False
     # Disable BBS isolation (isolated=true on create_task) for ablation experiments.
     disable_bbs_isolation: bool = False
     # Communication channels for swarm mode (list of "bbs", "dm", and/or "duo").

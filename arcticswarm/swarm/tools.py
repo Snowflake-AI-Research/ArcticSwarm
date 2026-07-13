@@ -1367,7 +1367,7 @@ class SwarmContext:
         # Auto-spawn auditor on first task creation.
         # Use reasoning profile for web-search swarms (auditor reviews
         # search findings); otherwise fall back to the task's profile.
-        if not self._auditor_spawned:
+        if not self._auditor_spawned and not getattr(self.config, "disable_auditor", False):
             auditor_profile = "reasoning" if self.config.has_web_search_capability() else task_profile
             self._spawn_auditor(profile=auditor_profile)
 

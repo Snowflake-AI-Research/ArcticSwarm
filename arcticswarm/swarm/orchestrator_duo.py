@@ -80,6 +80,12 @@ class DuoMixin:
         Both agents independently analyse the question in parallel, share
         findings via DM, reconcile, and the main worker submits the report.
         """
+        if getattr(self.config, "disable_auditor", False):
+            raise ValueError(
+                "swarm.disable_auditor is not supported in duo mode: duo mode "
+                "is leader + auditor by construction. Use dynamic/BBS swarm "
+                "mode (comm: [bbs]) to run without a dedicated auditor."
+            )
         from concurrent.futures import Future
         from datetime import date, datetime
 

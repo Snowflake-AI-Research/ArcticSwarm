@@ -1263,8 +1263,9 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
                 # dedicated reviewer before unlocking the report. ``has_web_search``
                 # scopes the gate to web runs; it is a no-op when there is no
                 # web capability and when the mins are 0.
-                min_dedicated_reviewers=getattr(
-                    self.config, "min_dedicated_reviewers", 0,
+                min_dedicated_reviewers=(
+                    0 if getattr(self.config, "disable_auditor", False)
+                    else getattr(self.config, "min_dedicated_reviewers", 0)
                 ),
                 min_builder_reviewers=getattr(
                     self.config, "min_builder_reviewers", 0,

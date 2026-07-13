@@ -124,6 +124,14 @@ class SwarmConfig:
     reset_auditor_history: bool = False
     auditor_model: str = ""
     auditor_reasoning_effort: str | None = None
+    # When True, do NOT spawn the always-on dedicated auditor subagent
+    # (dynamic/BBS mode) that reviews findings via idle-review, AND force
+    # the reviewer-diversity gate's dedicated side off (no reasoning-only
+    # reviewer is auto-spawned on demand). Net effect: the run has NO
+    # dedicated reviewers — only builder subagents (which can act as
+    # reviewers) run. Unsupported in duo mode (leader+auditor by
+    # construction) — raises at duo entry.
+    disable_auditor: bool = False
     realtime: bool = False
     realtime_timeout: int = 300
     enable_force_submit: bool = False
@@ -548,6 +556,7 @@ class RunConfig:
         config.builder_idle_lifetime = self.swarm.builder_idle_lifetime
         config.reset_auditor_history = self.swarm.reset_auditor_history
         config.auditor_model = self.swarm.auditor_model
+        config.disable_auditor = self.swarm.disable_auditor
         config.auditor_reasoning_effort = (
             None if self.swarm.auditor_reasoning_effort == "none"
             else self.swarm.auditor_reasoning_effort
