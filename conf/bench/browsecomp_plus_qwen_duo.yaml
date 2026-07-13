@@ -1,0 +1,179 @@
+# BrowseComp-Plus — DUO swarm (leader + auditor) on self-hosted Qwen3.5-27B
+# (vLLM), against a Snowflake Cortex Search corpus.
+#
+# This is the DUO-mode ABLATION of the newA dynamic-BBS BrowseComp-Plus baseline
+# (0710_bcp_again_v3, conf/bench/browsecomp_plus_qwen.yaml). Everything that CAN
+# be held constant vs that baseline is held constant — corpus backend, tools,
+# budgets, reasoning effort (xhigh), Qwen sampling, endpoints. The ONLY variable
+# is the swarm communication architecture: dynamic-BBS -> DUO.
+#
+# DUO MODE = leader (main worker) + auditor, DM-only, NO orchestrator LLM and NO
+# BBS. is_duo -> _run_duo_turn early-return (orchestrator.py:~896) skips the
+# entire BBS/dynamic-orchestrator path; the auditor is built via for_subagent()
+# (its effort is driven by subagent_reasoning_effort). The leader inherits its
+# tools from tools.agent (tools.orchestrator is a NO-OP for the duo leader).
+# Duo REQUIRES realtime:true.
+#
+# CORPUS BACKEND (BrowseComp-Plus): web.provider:corpus switches web_search ->
+# CorpusSearchTool and web_fetch -> CorpusFetchTool (tools/factory.py:184,241) —
+# purely on the web config, independent of comm mode. web_fetch takes a
+# DESCRIPTIVE QUERY, not a URL, and there is NO pdf_read (corpus has no live web
+# / PDFs). Hence the corpus toolset (no pdf_read) and the corpus-aware
+# skills below.
+#
+# SKILLS: tool-usage-policy-browsing-corpus-dm-duo (corpus tool semantics +
+# DM/Duo sharing via complete_task/send_message, no BBS) + web-research-corpus
+# (corpus research methodology; already BBS-free). This is the corpus analog of
+# the dm-duo skill pair — it does NOT teach live-web URL fetching or pdf_read.
+#
+# Qwen has no graduated reasoning effort — reasoning_effort /
+# subagent_reasoning_effort = xhigh map to a binary thinking-ON toggle via the
+# vLLM client. disable_closed_model_fallback forbids any Claude/GPT call.
+# azure.enabled:true is for the eval JUDGE ONLY (gpt-4-1-dev); the vLLM agent
+# client ignores it.
+#
+# WHICH newA_stack OVERRIDES ARE LIVE IN DUO (verified against the code):
+#   * reject_refusal_reports -> LIVE. Wired into the duo leader's SendReportTool
+#     (orchestrator_duo.py:~422); bounces a refusal/give-up FINAL ANSWER for a
+#     committed retry — the anti-give-up + empty-answer lever in duo.
+#   * compaction_prune_junk  -> LIVE. Agent/SubAgent proactive-compaction prune
+#     (context_management.py:552); not swarm-gated — both leader and auditor.
+#   OMITTED as INERT in DUO (the is_duo early-return skips their code; they need
+#   a BBS / the non-realtime PrepareReportTool which duo lacks):
+#     surface_bbs_candidates, enable_candidate_emergence_sweep,
+#     enable_empty_answer_recovery (its recovery turn is in the non-duo path;
+#     intent already covered by reject_refusal_reports), and the reviewer-
+#     diversity gate (min_dedicated_reviewers / min_builder_reviewers /
+#     max_reviewer_remediations / enforce_alt_task).
+#
+# Usage: see the handoff / command note. The endpoints / output dir are the only
+# run-specific CLI overrides.
+
+prompt_style: web
+
+tools:
+  # Corpus toolset for the duo LEADER (comes from tools.agent): NO pdf_read.
+  # reasoning is included so the leader can reason inline (duo pattern).
+  agent: [read_file, calculator, web_search, web_fetch, load_skill, reasoning]
+  agent_skills: [tool-usage-policy-browsing-corpus-dm-duo, web-research-corpus]
+  # tools.orchestrator is a NO-OP in duo mode (the leader's tools come from
+  # tools.agent). Kept for symmetry only. The duo leader DOES pull
+  # orchestrator_skills, so the corpus skills are set on both.
+  orchestrator: [load_skill]
+  orchestrator_skills: [tool-usage-policy-browsing-corpus-dm-duo, web-research-corpus]
+  profiles:
+    browsing:
+      tools: [calculator, web_search, web_fetch, load_skill, read_file]
+      skills: [tool-usage-policy-browsing-corpus-dm-duo, web-research-corpus]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+web:
+  enabled: true
+  # Corpus retrieval backend (Snowflake Cortex Search). provider:corpus routes
+  # web_search/web_fetch to the corpus; fetch_backend:corpus + no_fetch:false
+  # give full-document retrieval. Coordinates match browsecomp_plus_qwen.yaml.
+  provider: corpus
+  corpus_backend: cortex
+  corpus_account: AKB73862
+  corpus_db: CORTEX_SEARCH_DB
+  corpus_schema: PYU
+  corpus_chunked_service: BROWSECOMP_CHUNKS_SEARCH_SERVICE   # chunked snippets -> web_search
+  corpus_service: BROWSECOMP_SEARCH_SERVICE                  # full documents  -> web_fetch
+  corpus_pat_connection: ml_data
+  no_fetch: false
+  fetch_backend: corpus
+  # Corpus results are pre-chunked; no fetch/pdf compaction pass needed.
+  use_fetch_compactor: false
+  use_pdf_compactor: false
+  # Cap a single web_fetch result to ~5k tokens (~20K chars).
+  max_tool_output_tokens: 5000
+  # --- baseline (0710) efficiency levers, kept for parity with the newA
+  # baseline's config surface ---
+  # collapse_duplicate_tool_history / dup_history_keep_last: backend-agnostic
+  # tool-history dedup (context_management._collapse_duplicate_tool_results keys
+  # on the tool NAME web_search/web_fetch, so it DOES apply to the corpus stream).
+  collapse_duplicate_tool_history: true
+  dup_history_keep_last: 1
+  # browsing_max_reflection_loops: backend-agnostic subagent reflection cap.
+  browsing_max_reflection_loops: 2
+  # search_neardup_hard_stop: NO-OP on corpus (only wired into the native
+  # WebSearchTool, not CorpusSearchTool). Kept only to match the baseline
+  # command's config surface — identical no-op on both sides of the ablation.
+  search_neardup_hard_stop: 12
+  # Caches OFF (match baseline: force live corpus retrieval every run).
+  enable_search_cache: false
+  search_cache_read: false
+  fetch_cache_path: "off"
+
+vision: false
+
+swarm:
+  enabled: true
+  comm: [duo]
+  # Duo REQUIRES realtime:true — with realtime:false the leader would try to use
+  # prepare_report (stripped from the duo leader), causing a tool-not-found error.
+  realtime: true
+  max_subagents: 16
+  profiles: [browsing, reasoning]
+  # enable_force_submit / blocking_prepare_report are NO-OPS in duo (no
+  # prepare_report on the duo leader). auditor_reasoning_effort is INERT for the
+  # duo auditor (built via for_subagent(), so driven by subagent_reasoning_effort
+  # below); kept for symmetry.
+  enable_force_submit: false
+  auditor_reasoning_effort: "xhigh"
+
+# --- newA_stack behavioral overrides that are LIVE in duo mode (verified) ---
+reject_refusal_reports: true          # LIVE: duo SendReportTool bounces refusal/give-up finals (anti-give-up + empty-answer)
+compaction_prune_junk: true           # LIVE: Agent/SubAgent proactive-compaction prune (not swarm-gated)
+# OMITTED (INERT in duo — the is_duo early-return skips their code; they need a
+# BBS / the non-realtime PrepareReportTool which duo lacks):
+#   surface_bbs_candidates, enable_candidate_emergence_sweep,
+#   enable_empty_answer_recovery (intent covered by reject_refusal_reports),
+#   min_dedicated_reviewers / min_builder_reviewers / max_reviewer_remediations /
+#   enforce_alt_task.
+
+# azure.enabled flips use_azure_openai (consulted by judge gating); the vLLM
+# agent client ignores it. Needed true here for the Azure gpt-4-1-dev judge.
+azure:
+  enabled: true
+
+llm:
+  # Served-id trap: llm.model MUST be slash-free so vllm_served_model_id is
+  # applied on the wire (a slash in llm.model silently bypasses it -> 404).
+  model: qwen3.5-27b
+  vllm_served_model_id: Qwen/Qwen3.5-27B
+  # vLLM OpenAI-compatible endpoints (must end in /v1); comma-separated list is
+  # load-balanced least-connections. Overridable on the CLI. Matches baseline.
+  agent_model_base_url: "http://vboonsanong-8-h200-docai:7777/v1,http://soyoung-vllm-qwen35-h4:7777/v1,http://vboonsanong-8-h200:7777/v1"
+  reasoning_effort: "xhigh"
+  subagent_reasoning_effort: "xhigh"   # drives the duo auditor's effort (via for_subagent)
+  # --- Qwen / vLLM thinking-mode sampling (model-card values; == config
+  # defaults, set explicitly for self-documentation) ---
+  enable_thinking: true
+  vllm_temperature: 0.6
+  vllm_top_p: 0.95
+  vllm_top_k: 20
+  vllm_presence_penalty: 0.0
+  vllm_max_model_len: 262144            # native 256K window
+  disable_closed_model_fallback: true   # no Claude/GPT calls during the run
+  max_tokens: 32000
+  compact_tokens: 180000                # matches baseline
+  max_tool_calls_per_turn: 1
+  # orchestrator_max_tool_calls_per_turn is OMITTED — no-op in duo (the leader is
+  # not the orchestrator).
+  subagent_max_turns: 200               # LIVE: the duo auditor IS a SubAgent, so this bites
+  timeout: 1200                         # xhigh thinking on 27B is slow; avoid spurious idle timeouts
+  max_turns: 1200
+
+eval:
+  judge_model: gpt-4-1-dev
+  # csv_path / output are the run-specific CLI overrides (see command).
+  csv_path: arcticswarm/eval/data/browsecomp_plus_v1.csv
+  datasets: [BROWSECOMP_PLUS_V1]
+  parallel: 36
+  timeout: 20000
+  prepare_timeout: 1200                 # INERT in duo (no PrepareReportTool); kept for symmetry
+  checkpoint_interval: 1
+  resume: true
