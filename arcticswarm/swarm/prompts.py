@@ -39,6 +39,7 @@ def build_orchestrator_system_prompt(
     pre_loaded_tasks: list[str] | None = None,
     tool_profiles: dict[str, Any] | None = None,
     disable_bbs_isolation: bool = False,
+    force_bbs_isolation: bool = False,
 ) -> str:
     """Build the unified orchestrator system prompt.
 
@@ -66,6 +67,15 @@ def build_orchestrator_system_prompt(
         ``create_task`` schema (``tools.py``), so the prompt must not
         reference it. Gates the isolation hint in ``alt_task_rule`` to
         keep the ablation condition clean.
+    force_bbs_isolation:
+        When True, every browsing-profile exploration task is auto-isolated by
+        the harness (teammate.py; reviewer tasks stay exempt), so the
+        orchestrator has no isolation decision to make. Like
+        ``disable_bbs_isolation``, the ``isolated`` option is stripped from the
+        ``create_task`` schema; this flag likewise drops the ``(isolated=true)``
+        hint from ``alt_task_rule`` so the prompt never references an option
+        that is absent. Mutually exclusive with ``disable_bbs_isolation`` —
+        setting both is rejected at config load.
     """
 
     if not current_date:
@@ -300,10 +310,16 @@ When you are ready to submit, call `send_user_markdown_report` with the \
             if dm_realtime_direct_report
             else "calling `prepare_report`"
         )
-        # When BBS isolation is disabled (ablation), the ``isolated``
-        # option is absent from the create_task schema, so do not tell
-        # the orchestrator to pass it.
-        _iso_hint = "" if disable_bbs_isolation else " (isolated=true)"
+        # When BBS isolation is disabled OR force-isolated (ablation), the
+        # ``isolated`` option is absent from the create_task schema, so do
+        # not tell the orchestrator to pass it. (Force = every browsing task
+        # is auto-isolated; disable = none are — either way there is no
+        # per-task choice for the leader to make.)
+        _iso_hint = (
+            ""
+            if (disable_bbs_isolation or force_bbs_isolation)
+            else " (isolated=true)"
+        )
         alt_task_rule = (
             "- **MANDATORY**: Before "
             f"{_alt_when}, you MUST have created at least ONE "

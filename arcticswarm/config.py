@@ -321,6 +321,12 @@ class ArcticswarmConfig:
     disable_auditor: bool = False
     # Disable BBS isolation (isolated=true on create_task) for ablation experiments.
     disable_bbs_isolation: bool = False
+    # Force BBS isolation for browsing-profile EXPLORATION task executions
+    # (ablation). Scoped per task execution: reviewer tasks (reviewer_kind) and
+    # a subagent later running a reviewer/reasoning task still read the BBS.
+    # Mutually exclusive with disable_bbs_isolation — setting both is rejected
+    # at config load (run_config.to_arcticswarm_config).
+    force_bbs_isolation: bool = False
     # Communication channels for swarm mode (list of "bbs", "dm", and/or "duo").
     swarm_comm: list[str] = field(default_factory=lambda: ["bbs"])
     # When True and DM is enabled, the orchestrator uses an event-driven

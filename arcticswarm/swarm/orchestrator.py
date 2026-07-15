@@ -1187,6 +1187,7 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
             active_profiles=active_profile_names,
             has_web_search=has_web_search,
             disable_bbs_isolation=self.config.disable_bbs_isolation,
+            force_bbs_isolation=self.config.force_bbs_isolation,
             expose_blocking=dm_realtime_direct_report,
         )
         agent._tools["list_tasks"] = ListTasksTool(task_board)
@@ -1359,6 +1360,7 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
             pre_loaded_tasks=None,
             tool_profiles=self.config.tool_profiles,
             disable_bbs_isolation=self.config.disable_bbs_isolation,
+            force_bbs_isolation=self.config.force_bbs_isolation,
         )
 
         # Forward orchestrator events to the swarm UI.

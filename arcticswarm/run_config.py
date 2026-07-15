@@ -235,6 +235,10 @@ class WebConfig:
     )
     disable_source_scorer: bool = False
     disable_bbs_isolation: bool = False
+    # Force BBS isolation for all browsing-profile task executions (ablation).
+    # Scoped per task; reviewer/reasoning tasks still read the BBS. Ignored
+    # when disable_bbs_isolation is also set.
+    force_bbs_isolation: bool = False
     # Seamless search-result cache (see arcticswarm/tools/search_cache.py).
     # When enabled with a built DB path, web_search serves cached raw results
     # (source scorer always re-runs) and write-through-fills live misses.
@@ -614,6 +618,16 @@ class RunConfig:
             config.search_provider_order = list(_spo)
         config.disable_source_scorer = self.web.disable_source_scorer
         config.disable_bbs_isolation = self.web.disable_bbs_isolation
+        config.force_bbs_isolation = self.web.force_bbs_isolation
+        if self.web.disable_bbs_isolation and self.web.force_bbs_isolation:
+            # Contradictory ablation flags: disable => never isolate,
+            # force => always isolate browsing. Fail loud rather than
+            # silently letting disable win and producing a "force" run that
+            # isolated nothing.
+            raise ValueError(
+                "web.disable_bbs_isolation and web.force_bbs_isolation are "
+                "mutually exclusive — set at most one."
+            )
         config.search_repeat_guard_hard_stop = self.web.search_repeat_guard_hard_stop
         config.search_neardup_hard_stop = self.web.search_neardup_hard_stop
         config.collapse_duplicate_tool_history = self.web.collapse_duplicate_tool_history

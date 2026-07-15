@@ -1549,12 +1549,14 @@ class DynamicCreateTaskTool(BaseTool):
         *,
         has_web_search: bool = False,
         disable_bbs_isolation: bool = False,
+        force_bbs_isolation: bool = False,
         expose_blocking: bool = False,
     ) -> None:
         self._ctx = ctx
         self._active_profiles: list[str] = active_profiles or []
         self._has_web_search = has_web_search
         self._disable_bbs_isolation = disable_bbs_isolation
+        self._force_bbs_isolation = force_bbs_isolation
         self._expose_blocking = expose_blocking
 
     @property
@@ -1639,7 +1641,17 @@ class DynamicCreateTaskTool(BaseTool):
                 },
             },
         }
-        if self._has_web_search and not self._disable_bbs_isolation:
+        # Expose the per-task ``isolated`` choice only when isolation is
+        # left to the orchestrator. Both ablation flags remove the choice:
+        # ``disable`` => nothing is ever isolated; ``force`` => every
+        # browsing task is auto-isolated by the harness. In either case the
+        # leader has no decision to make, so keep the option out of the
+        # schema (and out of the prompt — see build_orchestrator_system_prompt).
+        if (
+            self._has_web_search
+            and not self._disable_bbs_isolation
+            and not self._force_bbs_isolation
+        ):
             schema["properties"]["isolated"] = {
                 "type": "boolean",
                 "description": (
@@ -1708,6 +1720,11 @@ class DynamicCreateTaskTool(BaseTool):
         depends_on_names: list[str] = kwargs.get("depends_on", []) or []
         profile: str = kwargs.get("profile", "")
         assign_to: str = kwargs.get("assign_to", "")
+        # ``isolated`` here reflects only the orchestrator's EXPLICIT per-task
+        # choice (baseline mode). The force_bbs_isolation ablation is NOT applied
+        # here: it is enforced uniformly for every browsing-profile execution in
+        # teammate.py (which also covers browsing tasks spawned outside this
+        # tool), and its option is stripped from the schema above. disable wins.
         isolated: bool = bool(kwargs.get("isolated", False)) and not self._disable_bbs_isolation
 
         if not task_name or not prompt:

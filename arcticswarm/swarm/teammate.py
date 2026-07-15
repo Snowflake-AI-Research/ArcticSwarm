@@ -1024,7 +1024,31 @@ class SubAgent:
         self.agent._pending_sources.clear()
 
         # --- BBS isolation: suppress all read paths for isolated tasks ---
-        is_isolated = task.metadata.get("isolated", False) and not self.config.disable_bbs_isolation
+        # Isolation is either requested per task (metadata["isolated"], set by
+        # the create_task tool) OR forced for browsing-profile EXPLORATION
+        # executions via the force_bbs_isolation ablation. Enforcing force HERE
+        # — the single point where reads are actually suppressed — covers
+        # browsing tasks created outside the create_task tool too: the alt-task
+        # / candidate-emergence contrarian sweeps spawn profile="browsing" tasks
+        # directly (answer_verification.py, tools.py alt_task_gate), and their
+        # prompts embed the leading candidate + question inline, so they run
+        # correctly without BBS reads.
+        # REVIEWER TASKS ARE EXEMPT: the builder-reviewer gate runs a
+        # profile="browsing" task whose job is to re-verify the leading
+        # candidate the team CONVERGED ON (read from #key-findings/#consensus);
+        # it must keep BBS access so "a builder acting as reviewer still sees the
+        # BBS". Reviewer tasks carry a reviewer_kind marker (tools.py reviewer
+        # gate); the dedicated reviewer is profile="reasoning" and is skipped by
+        # the profile check anyway. Scoped to browsing + restored per execution
+        # in the finally block below. disable_bbs_isolation overrides and wins.
+        is_isolated = task.metadata.get("isolated", False)
+        if (
+            self.config.force_bbs_isolation
+            and profile_name == "browsing"
+            and not task.metadata.get("reviewer_kind")
+        ):
+            is_isolated = True
+        is_isolated = is_isolated and not self.config.disable_bbs_isolation
         _saved_auto_bbs = None
         _saved_read_bbs_tool = None
         if is_isolated and self._read_bbs_tool is not None:
