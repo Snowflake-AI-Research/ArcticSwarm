@@ -1,0 +1,19 @@
+# Review-gate ablation — ARM R0 (all three gates OFF: reflection + bbs review + final verification)
+#
+# Overlay for the BrowseComp-Plus / Qwen3.5-27B review-gate ladder. Merge on top
+# of conf/bench/browsecomp_plus_qwen.yaml as a SECOND --config. Carries only the
+# per-arm skill remap; the behavioral gate flags are set on the CLI:
+#   swarm.enforce_alt_task=false swarm.disable_final_verification=true
+#   swarm.disable_auditor=true swarm.disable_builder_idle=true
+#   swarm.min_dedicated_reviewers=0 swarm.min_builder_reviewers=0
+#   web.disable_self_reflection=true
+#
+# GATE 1 (local reflection) + GATE 2 (bbs review) + GATE 3 (final verification) all
+# disabled. Orchestrator skill -> -noverify-noreview; browsing comm skill ->
+# -noreview; browsing domain skill -> web-research-corpus-singlepass (iterative
+# reflect/assess loop removed).
+swarm:
+  skill_overrides:
+    swarm-orchestration-dynamic-web: swarm-orchestration-dynamic-web-noverify-noreview
+    bbs-coordination-web: bbs-coordination-web-noreview
+    web-research-corpus: web-research-corpus-singlepass

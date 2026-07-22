@@ -1551,6 +1551,7 @@ class DynamicCreateTaskTool(BaseTool):
         disable_bbs_isolation: bool = False,
         force_bbs_isolation: bool = False,
         expose_blocking: bool = False,
+        enforce_alt_task: bool = True,
     ) -> None:
         self._ctx = ctx
         self._active_profiles: list[str] = active_profiles or []
@@ -1558,6 +1559,7 @@ class DynamicCreateTaskTool(BaseTool):
         self._disable_bbs_isolation = disable_bbs_isolation
         self._force_bbs_isolation = force_bbs_isolation
         self._expose_blocking = expose_blocking
+        self._enforce_alt_task = enforce_alt_task
 
     @property
     def name(self) -> str:
@@ -1628,19 +1630,25 @@ class DynamicCreateTaskTool(BaseTool):
                         "task to. Omit to let the system choose automatically."
                     ),
                 },
-                "alt": {
-                    "type": "boolean",
-                    "description": (
-                        "Set true if this task explores an ALTERNATIVE or "
-                        "CONTRARIAN hypothesis — i.e. it deliberately looks for "
-                        "a candidate DIFFERENT from the team's current leading "
-                        "answer. At least one such task is required before "
-                        "reporting; marking it here (or naming the task with an "
-                        "'alt'/'alternative'/'contrarian' token) satisfies that."
-                    ),
-                },
             },
         }
+        # Expose the ``alt`` (alternative/contrarian) option only when the
+        # alt-task premature-commitment gate is enforced. When it is off
+        # (ablation), the ``_check_alt_task_gate`` backstop is a no-op, so the
+        # schema must not advertise "required before reporting" — mirrors the
+        # ``isolated`` option gating below.
+        if self._enforce_alt_task:
+            schema["properties"]["alt"] = {
+                "type": "boolean",
+                "description": (
+                    "Set true if this task explores an ALTERNATIVE or "
+                    "CONTRARIAN hypothesis — i.e. it deliberately looks for "
+                    "a candidate DIFFERENT from the team's current leading "
+                    "answer. At least one such task is required before "
+                    "reporting; marking it here (or naming the task with an "
+                    "'alt'/'alternative'/'contrarian' token) satisfies that."
+                ),
+            }
         # Expose the per-task ``isolated`` choice only when isolation is
         # left to the orchestrator. Both ablation flags remove the choice:
         # ``disable`` => nothing is ever isolated; ``force`` => every

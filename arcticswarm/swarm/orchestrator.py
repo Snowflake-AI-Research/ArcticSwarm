@@ -1108,6 +1108,7 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
                     has_bbs=has_bbs,
                     has_web_search=has_web_search,
                     orchestrator_realtime=orchestrator_realtime,
+                    skill_overrides=getattr(self.config, "skill_overrides", None),
                 )
                 orch_skills = list(dict.fromkeys(
                     [orch_skill, *self.config.orchestrator_skills]
@@ -1189,6 +1190,7 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
             disable_bbs_isolation=self.config.disable_bbs_isolation,
             force_bbs_isolation=self.config.force_bbs_isolation,
             expose_blocking=dm_realtime_direct_report,
+            enforce_alt_task=getattr(self.config, "enforce_alt_task", True),
         )
         agent._tools["list_tasks"] = ListTasksTool(task_board)
         if not orchestrator_realtime:
@@ -1361,6 +1363,8 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
             tool_profiles=self.config.tool_profiles,
             disable_bbs_isolation=self.config.disable_bbs_isolation,
             force_bbs_isolation=self.config.force_bbs_isolation,
+            enforce_alt_task=getattr(self.config, "enforce_alt_task", True),
+            skill_overrides=getattr(self.config, "skill_overrides", None),
         )
 
         # Forward orchestrator events to the swarm UI.
@@ -1733,6 +1737,9 @@ class SwarmOrchestrator(DmMixin, DuoMixin):
                 and answer.strip()
                 and "reasoning" in agent._tools
                 and not ctx.wrapping_up.is_set()
+                and not getattr(
+                    self.config, "disable_final_verification", False
+                )
             ):
                 reasoning_tool = agent._tools["reasoning"]
                 if on_swarm_event:

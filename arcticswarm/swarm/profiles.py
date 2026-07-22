@@ -197,18 +197,26 @@ def resolve_orchestrator_skill(
     has_bbs: bool,
     has_web_search: bool = False,
     orchestrator_realtime: bool = False,
+    skill_overrides: dict[str, str] | None = None,
 ) -> str:
     """Return the orchestration skill name for the given swarm configuration.
 
     Subagents are always spawned dynamically (on demand), so the dynamic
     orchestration skills are selected here.
+
+    ``skill_overrides`` (``{original_name: variant_name}``) remaps the
+    resolved name — used by ablation arms to swap in a gate-stripped SKILL.md
+    variant. Empty/None = baseline behavior.
     """
     if not has_bbs:
-        return "swarm-orchestration-dynamic-dm"
+        name = "swarm-orchestration-dynamic-dm"
     elif has_web_search:
-        return "swarm-orchestration-dynamic-web"
+        name = "swarm-orchestration-dynamic-web"
     else:
-        return "swarm-orchestration-dynamic"
+        name = "swarm-orchestration-dynamic"
+    if skill_overrides:
+        name = skill_overrides.get(name, name)
+    return name
 
 
 def resolve_profile_skills(
@@ -219,6 +227,7 @@ def resolve_profile_skills(
     has_dm: bool,
     is_duo: bool = False,
     registry: "SkillRegistry | None" = None,
+    skill_overrides: dict[str, str] | None = None,
 ) -> tuple[str, ...]:
     """Compose the full skill list for a subagent profile.
 
@@ -277,6 +286,11 @@ def resolve_profile_skills(
     # loop can both produce the same skill name when a YAML happens to
     # list a skill that is already injected).
     result = list(dict.fromkeys(result))
+
+    # Ablation skill remap: swap in gate-stripped SKILL.md variants BEFORE
+    # the registry filter so the variant name is what gets validated/loaded.
+    if skill_overrides:
+        result = [skill_overrides.get(s, s) for s in result]
 
     if registry is not None:
         result = [s for s in result if registry.get(s) is not None]

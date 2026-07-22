@@ -532,6 +532,7 @@ class SubAgent:
                 _default_profile.included_tools if _default_profile else frozenset(),
                 has_bbs=has_bbs, has_dm=has_dm, is_duo=is_duo,
                 registry=registry,
+                skill_overrides=getattr(self.config, "skill_overrides", None),
             )
             if self.config.per_skill_tools:
                 from arcticswarm.tools.skill_tools import PerSkillTool as _PST
@@ -562,6 +563,7 @@ class SubAgent:
             reminder_skills = list(resolve_profile_skills(
                 _default_profile.skill_names, _default_profile.included_tools,
                 has_bbs=has_bbs, has_dm=has_dm, is_duo=is_duo,
+                skill_overrides=getattr(self.config, "skill_overrides", None),
             ))
             reminder_text = build_system_reminder(reminder_skills)
             _counter = [0]
@@ -590,12 +592,19 @@ class SubAgent:
         for profile_name, prompt_template in PROFILE_SYSTEM_PROMPTS.items():
             _prompt_profile = _profiles.get(profile_name) or get_profile(profile_name)
             _prompt_skills = _prompt_profile.skill_names if _prompt_profile else ()
+            _skill_overrides = getattr(config, "skill_overrides", None)
+            _disable_idle_review = (
+                getattr(config, "disable_auditor", False)
+                or getattr(config, "disable_builder_idle", False)
+            )
             comm_protocol = build_comm_protocol_inline(
                 has_bbs,
                 has_dm,
                 per_skill_tools=config.per_skill_tools,
                 is_duo=is_duo,
                 profile_name=profile_name,
+                disable_idle_review=_disable_idle_review,
+                skill_overrides=_skill_overrides,
             )
             self._profile_prompts[profile_name] = (
                 base_prompt + role_prefix + prompt_template.format(
@@ -605,6 +614,7 @@ class SubAgent:
                         profile_name,
                         skill_names=_prompt_skills,
                         per_skill_tools=config.per_skill_tools,
+                        skill_overrides=_skill_overrides,
                     ),
                     comm_protocol=comm_protocol,
                 )
@@ -735,6 +745,7 @@ class SubAgent:
                 has_bbs=self._has_bbs, has_dm=self._has_dm,
                 is_duo=self._is_duo,
                 registry=registry,
+                skill_overrides=getattr(self.config, "skill_overrides", None),
             )
             if self.config.per_skill_tools:
                 from arcticswarm.tools.skill_tools import make_per_skill_tools as _make_ps
@@ -1079,6 +1090,9 @@ class SubAgent:
             is_duo=self._is_duo,
             per_skill_tools=self.config.per_skill_tools,
             agent_name=self.name,
+            disable_self_reflection=getattr(
+                self.config, "disable_self_reflection", False
+            ),
         )
 
         # Attach the original question's image blocks to the first user

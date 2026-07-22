@@ -40,6 +40,8 @@ def build_orchestrator_system_prompt(
     tool_profiles: dict[str, Any] | None = None,
     disable_bbs_isolation: bool = False,
     force_bbs_isolation: bool = False,
+    enforce_alt_task: bool = True,
+    skill_overrides: dict[str, str] | None = None,
 ) -> str:
     """Build the unified orchestrator system prompt.
 
@@ -170,6 +172,7 @@ def build_orchestrator_system_prompt(
         has_bbs=has_bbs,
         has_web_search=has_web_search,
         orchestrator_realtime=orchestrator_realtime,
+        skill_overrides=skill_overrides,
     )
 
     # Profile mixing example text
@@ -303,8 +306,10 @@ When you are ready to submit, call `send_user_markdown_report` with the \
     # one alternative/contrarian task BEFORE reporting. This is the organic,
     # earliest path; PrepareReportTool._check_alt_task_gate is the hard backstop
     # that auto-spawns one if the orchestrator never does. Web-search runs only.
+    # Suppressed when ``enforce_alt_task`` is off (ablation: the code backstop
+    # is disabled, so the prompt must not advertise the mandate either).
     alt_task_rule = ""
-    if has_web_search:
+    if has_web_search and enforce_alt_task:
         _alt_when = (
             "submitting your final answer"
             if dm_realtime_direct_report
@@ -606,8 +611,27 @@ Load the {skill_ref} skill for more detailed guidelines.
 """
 
 
-def _bbs_coordination_inline(per_skill_tools: bool = False) -> str:
-    skill_ref = "`skill-bbs-coordination-web`" if per_skill_tools else "`bbs-coordination-web`"
+def _bbs_coordination_inline(
+    per_skill_tools: bool = False,
+    *,
+    disable_idle_review: bool = False,
+    skill_overrides: dict[str, str] | None = None,
+) -> str:
+    _skill_name = "bbs-coordination-web"
+    if skill_overrides:
+        _skill_name = skill_overrides.get(_skill_name, _skill_name)
+    skill_ref = f"`skill-{_skill_name}`" if per_skill_tools else f"`{_skill_name}`"
+    # Ablation (GATE 2 off): when no agent performs idle BBS review, drop the
+    # idle-review instruction so the prompt does not narrate a disabled behavior.
+    _idle_line = (
+        ""
+        if disable_idle_review
+        else (
+            "\n- When idle reviewing BBS: check for obvious errors only. "
+            'If correct, say "Nothing to flag." Do NOT duplicate work or '
+            "repeat others' analysis."
+        )
+    )
     return f"""\
 
 ## BBS Communication Protocol
@@ -615,8 +639,7 @@ def _bbs_coordination_inline(per_skill_tools: bool = False) -> str:
 - Communicate with the orchestrator and teammates through the shared Bulletin Board System (BBS).
 - **post_to_bbs**: Post discoveries, results, or discussion. Always include `structured_data` for machine-readable payloads.
 - **read_bbs**: Read recent posts, optionally filtered by channel or tags. Read BBS before starting work.
-- BBS channels: `discoveries` (relevant context), `key-findings` (research progress, findings, source URLs, candidate answers), `consensus` (agreements), `discussion` (challenges).
-- When idle reviewing BBS: check for obvious errors only. If correct, say "Nothing to flag." Do NOT duplicate work or repeat others' analysis.
+- BBS channels: `discoveries` (relevant context), `key-findings` (research progress, findings, source URLs, candidate answers), `consensus` (agreements), `discussion` (challenges).{_idle_line}
 
 Load the {skill_ref} skill for more detailed guidelines.
 """
@@ -653,12 +676,18 @@ def build_comm_protocol_inline(
     per_skill_tools: bool = False,
     is_duo: bool = False,
     profile_name: str = "browsing",
+    disable_idle_review: bool = False,
+    skill_overrides: dict[str, str] | None = None,
 ) -> str:
     """Short coordination protocol for `{comm_protocol}` in profile system prompts."""
     if is_duo:
         return _duo_coordination_inline(per_skill_tools)
     if has_bbs:
-        return _bbs_coordination_inline(per_skill_tools)
+        return _bbs_coordination_inline(
+            per_skill_tools,
+            disable_idle_review=disable_idle_review,
+            skill_overrides=skill_overrides,
+        )
     if has_dm:
         return _dm_coordination_inline(per_skill_tools)
     return ""
@@ -668,6 +697,7 @@ def build_skill_recommendations(
     profile_name: str,
     skill_names: tuple[str, ...] = (),
     per_skill_tools: bool = False,
+    skill_overrides: dict[str, str] | None = None,
 ) -> str:
     """Build on-demand skill listing for a subagent prompt.
 
@@ -676,8 +706,14 @@ def build_skill_recommendations(
     skills are auto-injected at runtime by ``resolve_profile_skills``
     and inlined via ``build_comm_protocol_inline``, so they are not
     listed here.
+
+    ``skill_overrides`` remaps the advertised skill names to their ablation
+    variants so the name the subagent is told to load matches the remapped
+    ``load_skill`` allowlist (built from ``resolve_profile_skills``).
     """
     display_skills = list(skill_names)
+    if skill_overrides:
+        display_skills = [skill_overrides.get(s, s) for s in display_skills]
 
     parts: list[str] = []
     if per_skill_tools:
@@ -1041,6 +1077,7 @@ def get_profile_task_prompt(
     is_duo: bool = False,
     per_skill_tools: bool = False,
     agent_name: str = "",
+    disable_self_reflection: bool = False,
 ) -> str:
     """Build the initial user message for a subagent given its profile.
 
@@ -1092,7 +1129,26 @@ findings per your role (see duo-coordination) with a thorough summary.
 """
 
     if has_bbs:
-        _browsing_instructions = """\
+        if disable_self_reflection:
+            # Ablation (GATE 1 off): the subagent runs a single search pass, so
+            # the task prompt must not narrate the iterative reflect/assess loop
+            # or the completion self-assessment checklist.
+            _browsing_instructions = """\
+## Instructions
+
+Search the web to answer the task above. Follow your loaded skills for
+source evaluation and search guidance.
+
+**CRITICAL**: You MUST call `web_search` at least once before posting any
+findings to the BBS. Do NOT rely on your training knowledge alone — search
+and cite actual web sources for every claim.
+
+### Completion
+1. Post ALL findings with source URLs to the appropriate BBS channel.
+2. Call `complete_task` with a summary of what you found.
+"""
+        else:
+            _browsing_instructions = """\
 ## Instructions
 
 Search the web to answer the task above. Follow your loaded skills

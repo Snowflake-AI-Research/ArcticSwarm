@@ -366,6 +366,14 @@ class ArcticswarmConfig:
     # ``has_web_search`` at the construction site).  Targets the
     # "premature commitment correlates with failure" finding.
     enforce_alt_task: bool = True
+    # When True, skip the post-answer code-enforced constraint-verification
+    # re-loop in the orchestrator (Layer 4a). Ablation knob for the "final
+    # verification" review gate; leaves the reviewer-diversity / alt-task
+    # gates independent.
+    disable_final_verification: bool = False
+    # Per-run skill-name remap ``{original: variant}`` applied at skill
+    # resolution so ablation arms can swap gate-stripped SKILL.md variants.
+    skill_overrides: dict[str, str] = field(default_factory=dict)
     # When True (default), ``prepare_report`` in realtime mode blocks
     # inside ``Mailbox.wait_for_message`` for up to ``timeout`` seconds
     # waiting for a teammate DM before returning "Not ready".  When

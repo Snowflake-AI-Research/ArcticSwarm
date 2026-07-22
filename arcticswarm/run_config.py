@@ -140,6 +140,16 @@ class SwarmConfig:
     # task if the orchestrator never opened one.  See
     # ``ArcticswarmConfig.enforce_alt_task``.
     enforce_alt_task: bool = True
+    # When True, skip the orchestrator's post-answer, code-enforced
+    # constraint-verification re-loop (see ``ArcticswarmConfig``). Ablation
+    # knob for the "final verification" review gate; independent of the
+    # reviewer-diversity / alt-task gates.
+    disable_final_verification: bool = False
+    # Per-run skill-name remap ``{original_skill_name: variant_skill_name}``.
+    # Applied in ``resolve_orchestrator_skill`` / ``resolve_profile_skills`` so
+    # an ablation arm can swap in a gate-stripped SKILL.md variant without
+    # touching the baseline skill files. Empty = no remap (baseline).
+    skill_overrides: dict[str, str] = field(default_factory=dict)
     broadcast_findings: bool = False
     peer_dm_summary: bool = False
     context_reset: bool = False
@@ -569,6 +579,8 @@ class RunConfig:
         config.orchestrator_realtime_timeout = self.swarm.realtime_timeout
         config.enable_force_submit = self.swarm.enable_force_submit
         config.enforce_alt_task = self.swarm.enforce_alt_task
+        config.disable_final_verification = self.swarm.disable_final_verification
+        config.skill_overrides = dict(self.swarm.skill_overrides)
         config.submit_findings_broadcast = self.swarm.broadcast_findings
         config.peer_dm_summary = self.swarm.peer_dm_summary
         config.subagent_context_reset = self.swarm.context_reset
