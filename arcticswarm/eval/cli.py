@@ -580,6 +580,10 @@ def main() -> None:
     if not args.rejudge and (ev.resume or ev.rerun_errors or ev.rerun_timeouts or ev.rerun_wrong):
         output_dir = Path(ev.output)
         prior_report = output_dir / "report.json"
+        # For eval.repeat>1 the top-level report.json is only written when the
+        # whole eval finishes; mid-run (or after a kill) the checkpoints live in
+        # per-run run_N/report.json files. Treat those as a valid resume source.
+        prior_per_run = (output_dir / "run_0" / "report.json").exists()
         # Choose data source: trajectory files or report.json
         if ev.rebuild_from_trajectories:
             console.print(
@@ -587,7 +591,7 @@ def main() -> None:
             )
             prior_grouped, _prior_is_swarm = load_results_from_trajectories(output_dir)
             resolve_reference_answers(prior_grouped, csv_path=ev.csv_path or None)
-        elif prior_report.exists():
+        elif prior_report.exists() or prior_per_run:
             prior_grouped, _prior_is_swarm = load_results_for_resume(output_dir)
             resolve_reference_answers(prior_grouped, csv_path=ev.csv_path or None)
         else:
@@ -609,6 +613,14 @@ def main() -> None:
             cases_by_run: list[list[EvalCase]] = []
             per_run_status: list[tuple[int, int, int, int]] = []
             needs_rejudge_by_run = [[] for _ in range(num_runs)]
+
+            # Aggregated across all runs for the rerun-errors/timeouts summary.
+            from collections import Counter as _Counter
+            _agg_clean = 0
+            _agg_incomplete = 0
+            _agg_rerun_reasons: dict[str, str] = {}
+            _agg_error_categories: _Counter[str] = _Counter()
+            _agg_error_ids: set[str] = set()
 
             for run_idx in range(num_runs):
                 complete_results = [
@@ -633,16 +645,14 @@ def main() -> None:
                     if r.case.conv_id not in needs_rejudge_ids
                 ]
 
-                if (ev.rerun_errors or ev.rerun_timeouts or ev.rerun_wrong) and run_idx == 0:
+                if ev.rerun_errors or ev.rerun_timeouts or ev.rerun_wrong:
                     # --rerun-errors / --rerun-timeouts: split complete results
-                    # into clean (preserved) vs rerun (re-executed).
+                    # into clean (preserved) vs rerun (re-executed). Applied to
+                    # EVERY run so eval.repeat>1 reruns errors/timeouts in all
+                    # runs, not just run 0.
                     clean_results = []
                     rerun_reasons: dict[str, str] = {}
-                    from collections import Counter
-                    error_category_counts: Counter[str] = Counter()
 
-                    # Load per-case dicts from prior report for timeout detection
-                    _prior_case_dicts: dict[str, dict] = {}
                     # Timeout threshold = the configured eval.timeout for THIS
                     # rerun (pass the same eval.timeout as the original run).
                     # NOTE: this used to be *inferred* from max(duration)
@@ -653,15 +663,7 @@ def main() -> None:
                     # and only the single longest case got re-flagged (the "1 rerun
                     # instead of ~30" bug). Use the explicit configured value.
                     _prior_timeout: float = ev.timeout
-                    if ev.rerun_timeouts:
-                        _prior_report_path = output_dir / "report.json"
-                        if _prior_report_path.exists():
-                            try:
-                                _prior_data = json.loads(_prior_report_path.read_text())
-                                for _pc in _prior_data.get("per_case", []):
-                                    _prior_case_dicts[_pc.get("conv_id", "")] = _pc
-                            except Exception:
-                                pass
+                    if ev.rerun_timeouts and run_idx == 0:
                         logger.info(
                             "rerun_timeouts threshold: %.0fs (eval.timeout)", _prior_timeout,
                         )
@@ -674,13 +676,14 @@ def main() -> None:
                         if ev.rerun_errors:
                             should_rerun, reason = result_has_rerunnable_error(r, output_dir)
 
-                        # Check timeouts (catches recovered timeouts invisible to rerun_errors)
+                        # Check timeouts (catches recovered timeouts invisible to
+                        # rerun_errors). Duration comes from the restored result
+                        # itself, so this works per-run without the top-level report.
                         if not should_rerun and ev.rerun_timeouts:
-                            _case_dict = _prior_case_dicts.get(r.case.conv_id, {})
+                            _case_dict = {"duration_seconds": r.duration_seconds}
                             if result_is_timeout(_case_dict, _prior_timeout):
                                 should_rerun = True
-                                dur = _case_dict.get("duration_seconds", 0)
-                                reason = f"timeout: {dur:.0f}s (prior limit {_prior_timeout:.0f}s)"
+                                reason = f"timeout: {r.duration_seconds:.0f}s (prior limit {_prior_timeout:.0f}s)"
 
                         # Check wrong answers (judged incorrect)
                         if not should_rerun and ev.rerun_wrong:
@@ -691,13 +694,13 @@ def main() -> None:
                         if should_rerun:
                             rerun_reasons[r.case.conv_id] = reason
                             if "rate limit" in reason.lower() or "399530" in reason:
-                                error_category_counts["web search rate limit"] += 1
+                                _agg_error_categories["web search rate limit"] += 1
                             elif "timeout" in reason.lower() or "timed out" in reason.lower():
-                                error_category_counts["timeout"] += 1
+                                _agg_error_categories["timeout"] += 1
                             elif "wrong" in reason.lower():
-                                error_category_counts["wrong answer"] += 1
+                                _agg_error_categories["wrong answer"] += 1
                             else:
-                                error_category_counts["execution error"] += 1
+                                _agg_error_categories["execution error"] += 1
                         else:
                             clean_results.append(r)
 
@@ -715,13 +718,18 @@ def main() -> None:
                         (len(completed_ids), len(run_needs_rejudge), len(incomplete_ids), len(remaining_cases))
                     )
 
+                    # Accumulate into the cross-run summary.
+                    _agg_clean += len(clean_results)
+                    _agg_incomplete += len(incomplete_ids)
+                    _agg_rerun_reasons.update(rerun_reasons)
+                    _agg_error_ids |= error_ids
                     rerun_error_meta = {
-                        "clean_count": len(clean_results),
-                        "error_count": len(error_ids),
-                        "incomplete_count": len(incomplete_ids),
-                        "rerun_reasons": rerun_reasons,
-                        "error_categories": dict(error_category_counts),
-                        "error_ids": error_ids,
+                        "clean_count": _agg_clean,
+                        "error_count": len(_agg_error_ids),
+                        "incomplete_count": _agg_incomplete,
+                        "rerun_reasons": dict(_agg_rerun_reasons),
+                        "error_categories": dict(_agg_error_categories),
+                        "error_ids": set(_agg_error_ids),
                     }
                 else:
                     completed_ids = {r.case.conv_id for r in complete_results}

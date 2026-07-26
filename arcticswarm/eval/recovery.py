@@ -160,17 +160,44 @@ def load_results_for_resume(
     )
 
     report_path = resume_dir / "report.json"
-    if not report_path.exists():
-        raise FileNotFoundError(f"No report.json found in {resume_dir}")
 
-    with open(report_path) as f:
-        report = json.load(f)
+    # For eval.repeat>1 (num_runs>1) the freshest data lives in per-run
+    # checkpoints (run_0/report.json, run_1/report.json, …). The top-level
+    # report.json with a "runs" key is written ONLY when the whole eval
+    # finishes — during the run, and after a mid-run kill, it does not exist.
+    # Prefer the per-run checkpoints when present so resume recovers completed
+    # work across all runs instead of restarting from scratch.
+    per_run_reports: list[dict] = []
+    i = 0
+    while (resume_dir / f"run_{i}" / "report.json").exists():
+        try:
+            with open(resume_dir / f"run_{i}" / "report.json") as f:
+                per_run_reports.append(json.load(f))
+        except Exception:
+            break
+        i += 1
 
-    # Detect single-run vs multi-run report
-    if "runs" in report:
-        runs_data = report["runs"]
+    if per_run_reports:
+        report = {
+            "runs": per_run_reports,
+            "swarm_enabled": any(
+                r.get("swarm_enabled", False) for r in per_run_reports
+            ),
+        }
+        runs_data = per_run_reports
+        multi_run = True
+    elif report_path.exists():
+        with open(report_path) as f:
+            report = json.load(f)
+        # Detect single-run vs multi-run report
+        if "runs" in report:
+            runs_data = report["runs"]
+            multi_run = True
+        else:
+            runs_data = [report]
+            multi_run = False
     else:
-        runs_data = [report]
+        raise FileNotFoundError(f"No report.json found in {resume_dir}")
 
     grouped: list[list[EvalResult]] = []
     for run_idx, run_data in enumerate(runs_data):
@@ -178,7 +205,7 @@ def load_results_for_resume(
         results: list[EvalResult] = []
 
         # Determine trajectory directory
-        if len(runs_data) > 1:
+        if multi_run:
             traj_dir = resume_dir / f"run_{run_idx}" / "trajectories"
         else:
             traj_dir = resume_dir / "trajectories"
