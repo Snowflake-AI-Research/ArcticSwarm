@@ -36,8 +36,8 @@ def band(x, y, e, style, color, label, ms=5):
     ax.fill_between(x, y - e, y + e, color=color, alpha=.15)
 
 # plain-text labels: matplotlib is not in usetex mode, so no \textbf / \% markup
-band(sw_x, sw_y, sw_e, "-o", "#1b6ca8", "ArcticSwarm (isolation, 82.6%)")
-band(iso_x, iso_y, iso_e, "-^", "#2a9d8f", "$-$ isolation / unrestricted\nBBS (80.0%)")
+band(sw_x, sw_y, sw_e, "-o", "#1b6ca8", "ArcticSwarm (gated isolation, 82.6%)")
+band(iso_x, iso_y, iso_e, "-^", "#2a9d8f", "$-$ gated isolation / free\ncommunication (80.0%)")
 band(pool_x, pool_y, pool_e, "--s", "#c1440e", "Independent single-agent\nruns (cumulative)")
 
 ax.set_xlabel("$N$ search paths (browsing agents / runs)")
