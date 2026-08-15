@@ -1,0 +1,15 @@
+# Single-agent baseline (no swarm) on BrowseComp-Plus / Qwen3.5-27B.
+#
+# Overlay for the BrowseComp-Plus baseline. Merge on top of
+# conf/bench/browsecomp_plus_qwen.yaml as a SECOND --config:
+#   arcticswarm-eval \
+#     -c conf/bench/browsecomp_plus_qwen.yaml \
+#     -c conf/bench/browsecomp_plus_qwen_single_agent.yaml \
+#     eval.output=results/bcp_single_agent ...
+#
+# swarm.enabled=false turns off ALL multi-agent orchestration and every review
+# gate at once: one agent browses the corpus and answers directly, with no
+# orchestrator, no review board, no commit gate. This is the "Single agent
+# (ArcticSwarm)" row in the paper (48.4 acc, ~0.05x tokens).
+swarm:
+  enabled: false

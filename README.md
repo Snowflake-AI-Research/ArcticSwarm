@@ -183,6 +183,81 @@ BrowseComp-Plus is scored by its dedicated judge. The `provider: corpus` / `fetc
 
 ---
 
+## 4a. Turning off review, and running a single agent
+
+ArcticSwarm has **three review gates** that trade tokens for accuracy. They can be
+removed one at a time (each preset below is *cumulative* — it also turns off the
+gates above it). Merge a preset on top of the BrowseComp-Plus/Qwen baseline as a
+**second** `--config`. Gated isolation stays on in all three:
+
+```bash
+# Stage 1 — commit gate (final verification) OFF
+arcticswarm-eval \
+  -c conf/bench/browsecomp_plus_qwen.yaml \
+  -c conf/bench/browsecomp_plus_qwen_review1_commitgate_off.yaml \
+  llm.agent_model_base_url=http://<your-vllm-host>:7777/v1 \
+  azure.enabled=true eval.judge_model=gpt-4-1-dev \
+  eval.output=results/bcp_commitgate_off
+
+# Stage 2 — + board audit OFF (commit gate already off)
+arcticswarm-eval \
+  -c conf/bench/browsecomp_plus_qwen.yaml \
+  -c conf/bench/browsecomp_plus_qwen_review2_audit_off.yaml \
+  llm.agent_model_base_url=http://<your-vllm-host>:7777/v1 \
+  azure.enabled=true eval.judge_model=gpt-4-1-dev \
+  eval.output=results/bcp_audit_off
+
+# Stage 3 — + self-check (reflection) OFF (all three gates off)
+arcticswarm-eval \
+  -c conf/bench/browsecomp_plus_qwen.yaml \
+  -c conf/bench/browsecomp_plus_qwen_review3_selfcheck_off.yaml \
+  llm.agent_model_base_url=http://<your-vllm-host>:7777/v1 \
+  azure.enabled=true eval.judge_model=gpt-4-1-dev \
+  eval.output=results/bcp_selfcheck_off
+```
+
+Each preset is a thin overlay — it flips the behavioral flags and remaps the
+skills for that stage. What each gate is, the flags it toggles, and its measured
+cost on BrowseComp-Plus (Qwen3.5-27B):
+
+| Gate removed (cumulative) | What it does | Key flags | Rel. tokens |
+|---|---|---|---|
+| **Commit gate** (final verification) | Final answer must pass a verification turn before it commits | `swarm.disable_final_verification=true`, skill → `…-noverify` | **0.66x** |
+| **+ Board audit** (BBS review board) | Dedicated/builder reviewers + auditor audit posted candidates | `swarm.disable_auditor=true`, `swarm.min_dedicated_reviewers=0`, `swarm.min_builder_reviewers=0`, `swarm.max_reviewer_remediations=0`, `swarm.disable_builder_idle=true`, skills → `…-noverify-noreview` / `bbs-coordination-web-noreview` | **0.59x** |
+| **+ Self-check** (per-agent reflection) | Each browsing agent runs a reflect/assess loop between steps | `web.disable_self_reflection=true`, `web.browsing_max_reflection_loops=0`, skill → `web-research-corpus-singlepass` | **0.24x** (~4–5x faster) |
+
+### Single agent (no swarm)
+
+To disable the swarm entirely — one agent browses and answers directly, no
+orchestrator, no reviewers, no gates — set `swarm.enabled=false` (either on the
+CLI or via the ready-made preset):
+
+```bash
+arcticswarm-eval \
+  -c conf/bench/browsecomp_plus_qwen.yaml \
+  -c conf/bench/browsecomp_plus_qwen_single_agent.yaml \
+  llm.agent_model_base_url=http://<your-vllm-host>:7777/v1 \
+  azure.enabled=true eval.judge_model=gpt-4-1-dev \
+  eval.output=results/bcp_single_agent
+# equivalently: append `swarm.enabled=false` to any preset instead of the overlay
+```
+
+### Accuracy vs. tokens (BrowseComp-Plus, Qwen3.5-27B)
+
+| Method | Accuracy | Δ | Rel. tokens |
+|---|---|---|---|
+| **ArcticSwarm** (full stack) | **82.6** ±0.5 | — | 1x |
+| − commit gate | 80.8 | −1.7 | 0.66x |
+| &nbsp;&nbsp;↳ − board audit | 78.1 | −4.5 | 0.59x |
+| &nbsp;&nbsp;&nbsp;&nbsp;↳ − self-check | 76.3 | −6.3 | 0.24x |
+| Single agent (ArcticSwarm) | 48.4 ±1.0 | −34.2 | 0.05x |
+
+The review teardown is cumulative (each row also has the gates above it off);
+gated isolation is kept on throughout. The single-agent row removes *all*
+orchestration and gates at once.
+
+---
+
 ## 5. Results
 
 Each run writes to `results/<name>/` — per-case trajectories plus a `report.json` with accuracy. To browse runs interactively:
