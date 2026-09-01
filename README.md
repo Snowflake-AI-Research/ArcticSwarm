@@ -367,3 +367,9 @@ If you use ArcticSwarm, please cite the paper:
 ## 📜 License
 
 Apache-2.0 (see [LICENSE](LICENSE)) — covers ArcticSwarm's code only. Benchmark datasets retain their own upstream licenses; see [DATASETS.md](DATASETS.md).
+
+## License
+
+Copyright (c) Snowflake Inc. All rights reserved.
+
+Licensed under the [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) license.
