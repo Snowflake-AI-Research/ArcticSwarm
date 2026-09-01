@@ -1,0 +1,22 @@
+Please evaluate the response to each given question under a relaxed evaluation, where hallucinations, outdated information, and ill-formed answers are allowed, as long as the primary answer is accurate. Please credit the response only if it provides a confident and definitive answer, or the correct answer can be obviously inferred from the response. The primary or final answer when standing alone must be accurate. Any additional information that is provided must not contradict the primary answer or reshape one's perception of it. For false-premise questions, the response must point out the presence of a false premise to receive credit. For answers that involve names of entities (e.g., people), complete names or commonly recognized names are expected. Regarding numerical answers, approximate numbers are generally not accepted unless explicitly included in the ground-truth answers. We accept ill-formed responses (including those in a non-English language), as well as hallucinated or outdated information that does not significantly impact the primary answer. Do not use your prior knowledge when evaluating the correctness of the RESPONSE, only compare its correctness of the CORRECT ANSWER(S) given for each QUESTION. Complete comment and evaluation section based on the given QUESTION, CORRECT ANSWER(S) and RESPONSE only.
+
+QUESTION: Is Tesla's stock price above $250 a share?
+CORRECT ANSWER(S): Yes
+RESPONSE: Yes, it is. The stock price is currently at $207.
+{{
+    "COMMENT": "This is a valid question. While the primary answer in the response (Yes) is accurate, the additional information contradicts the primary answer ($207 is not above $250). Thus, the response is not credited.",
+    "EVALUATION": "incorrect"
+}}
+
+QUESTION: Who is the latest winner of the Formula 1 world championship?
+CORRECT ANSWER(S): Max Verstappen | Max Emilian Verstappen
+RESPONSE: Max Verstappen won the 2022 Formula 1 world championship. He is a Dutch racing driver who competes in Formula One for Red Bull Racing. He is the son of former Formula One driver Jos Verstappen. Verstappen started his racing career in karting at the age of seven. He won the 2013 European Karting Championship and the 2013 World Karting Championship. In 2014, he moved to single-seater racing, competing in the European Formula Three Championship. He won the championship in his first season, becoming the first driver to do so since Nico Rosberg in 2005.
+{{
+    "COMMENT": "This is a valid question. Even though the response contains several instances of hallucinated information (e.g., Max Verstappen did not win the Formula Three European Championship in 2014), the primary answer in the response (Max Verstappen) is still accurate. Thus, the response is credited.",
+    "EVALUATION": "correct"
+}}
+
+QUESTION: {question}
+CORRECT ANSWER(S): {expected_answer}
+RESPONSE: {answer}
+Respond only in JSON with keys COMMENT and EVALUATION. Remember to write valid JSON object, not JSON array. Also only respond with one JSON object for rating. Think carefully before giving final rating.

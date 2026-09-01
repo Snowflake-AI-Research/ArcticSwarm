@@ -1,0 +1,135 @@
+# BrowseComp — self-hosted Qwen 3.5-27B (vLLM). Recommended / default Qwen config.
+#
+# The tuned open-model setup behind ArcticSwarm's Qwen 3.5-27B numbers: a dynamic
+# swarm with web search, dup-trim + query-diversity levers, and the anti-give-up /
+# empty-answer recovery levers enabled. Runs the WHOLE agent (orchestrator + every
+# subagent + compaction + the source-scorer / content-compactor tool LLMs) on the
+# self-hosted Qwen vLLM endpoint; the only closed-model call is the optional eval
+# judge (post-hoc grading, never touches the agent trajectory).
+#
+# Serve Qwen 3.5-27B on an OpenAI-compatible vLLM endpoint (see the README "Run the
+# benchmarks" section for the exact 8xH200 launch). ArcticSwarm raises on unknown
+# YAML/CLI keys, so unsupported knobs must be omitted (not left in).
+#
+# Usage (override the endpoints/output for your deployment):
+#   arcticswarm-eval --config conf/bench/browsecomp_qwen.yaml \
+#     eval.output=results/<run_name> \
+#     llm.agent_model_base_url="http://localhost:7777/v1,http://localhost:7778/v1" \
+#     eval.parallel=24 \
+#     odl.hybrid_url=http://127.0.0.1:8080
+#
+# llm.agent_model_base_url accepts a comma-separated list of vLLM endpoints
+# (least-connections load-balanced across the eval's parallel workers). To grade
+# with the public OpenAI GPT-4.1 judge instead of the self-hosted Qwen judge below:
+#   eval.judge_model=openai-gpt-4.1   (needs OPENAI_API_KEY, or azure.enabled + your Azure deployment)
+
+prompt_style: web
+
+tools:
+  agent: [read_file, calculator, web_search, web_fetch, pdf_read, python_execute, load_skill]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research, tool-usage-policy-browsing]
+  profiles:
+    browsing:
+      tools: [read_file, calculator, web_search, web_fetch, pdf_read]
+      skills: [web-research, tool-usage-policy-browsing]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+swarm:
+  enabled: true
+  profiles: [browsing, reasoning]
+  enable_force_submit: false
+  auditor_reasoning_effort: "xhigh"
+  min_dedicated_reviewers: 1
+  min_builder_reviewers: 1
+  max_reviewer_remediations: 2
+  enforce_alt_task: true
+  context_reset: false
+  reset_auditor_history: false
+  disable_builder_idle: true
+  max_subagents: 10
+
+enable_candidate_emergence_sweep: true
+
+# Anti-give-up + answer-recovery levers (config-gated). BrowseComp answers always
+# exist, so a give-up scores the same 0 as a committed wrong answer — committing
+# the best-supported candidate can only help. reject_refusal_reports bounces a
+# refusal FINAL ANSWER back for a committed retry (bounded); empty-answer recovery
+# + BBS-candidate surfacing + compaction junk-pruning keep findings alive.
+reject_refusal_reports: true
+enable_empty_answer_recovery: true
+compaction_prune_junk: true
+surface_bbs_candidates: true
+
+web:
+  enabled: true
+  collapse_duplicate_tool_history: true   # dup-trim: collapse repeated tool-call results in history
+  dup_history_keep_last: 1
+  search_neardup_hard_stop: 12            # query-diversity: force-stop reformulation loops at 12
+  disable_source_scorer: false            # source scorer ON (for annotations)
+  use_fetch_compactor: true
+  use_pdf_compactor: true
+  # Cap a single web_fetch/pdf_read result (and the compactor's selected output)
+  # to ~5k tokens (~20K chars) so one tool turn can't overflow the 262K window
+  # before reactive compaction runs.
+  max_tool_output_tokens: 5000
+  browsing_max_reflection_loops: 2
+
+odl:
+  # Override for your PDF dataloader deployment; omit to auto-start the PDF backend locally.
+  hybrid_url: "http://127.0.0.1:8080"
+
+# azure.enabled only flips use_azure_openai (consulted by the judge gating and the
+# closed-model paths disabled below); the vLLM agent client ignores it.
+azure:
+  enabled: true
+
+llm:
+  model: "Qwen/Qwen3.5-27B"
+  # vLLM OpenAI-compatible endpoint(s) (must end in /v1). Overridden on the CLI;
+  # accepts a comma-separated list for least-connections load-balancing.
+  agent_model_base_url: "http://localhost:7777/v1"  # point at your own vLLM endpoint(s)
+  reasoning_effort: "xhigh"
+  subagent_reasoning_effort: "xhigh"
+  # --- Qwen / vLLM knobs (model-card thinking-mode sampling) ---
+  enable_thinking: true
+  vllm_temperature: 0.6
+  vllm_top_p: 0.95
+  vllm_top_k: 20
+  vllm_presence_penalty: 0.0
+  vllm_max_model_len: 262144            # native 256K window
+  disable_closed_model_fallback: true   # no Claude/GPT calls during the run
+  max_tokens: 32000
+  compact_tokens: 180000                # proactive-compaction trigger (safe below the 262K window)
+  max_tool_calls_per_turn: 1            # disciplined 1-call/turn for browsing subagents
+  # Orchestrator (swarm leader) runs UNLIMITED tool calls/turn so its batched
+  # create_task fan-out + wait_for_tasks aren't silently truncated to 1.
+  # -1 = inherit the cap above; 0 = unlimited orchestrator.
+  orchestrator_max_tool_calls_per_turn: 0
+  # post_to_bbs always executes even when a subagent batches it past the
+  # 1-call cap (e.g. web_search + post_to_bbs -> both run), so a finding a
+  # subagent tries to post always lands and is never silently dropped.
+  always_execute_tools_per_turn: ["post_to_bbs"]
+  subagent_max_turns: 200
+  timeout: 1200                         # xhigh thinking on 27B is slow; avoid spurious idle timeouts
+  max_turns: 1200
+
+eval:
+  # Self-hosted Qwen judge (vLLM, OpenAI-compatible). Served id must match the
+  # endpoint's /v1/models id. Override eval.judge_model=openai-gpt-4.1 to grade on
+  # the public OpenAI GPT-4.1 judge instead (needs OPENAI_API_KEY in config_files.json).
+  judge_model: "Qwen/Qwen3-32B"
+  judge_model_base_url: "http://localhost:6666/v1"  # point at your own vLLM judge endpoint
+  # Swap csv_path to your own subset; default is the representative subset.
+  csv_path: arcticswarm/eval/data/browsecomp_subset_representative.csv
+  datasets: [BROWSECOMP_V1]
+  parallel: 20                          # finalized run used 20 across 2 vLLM endpoints; scale to your endpoint capacity
+  timeout: 9000
+  prepare_timeout: 1200
+  max_retries: 2
+  checkpoint_interval: 1
+  resume: true
+  rerun_errors: true
+  rerun_timeouts: true

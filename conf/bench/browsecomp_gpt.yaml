@@ -1,0 +1,69 @@
+# BrowseComp benchmark — dynamic swarm with web search, OpenAI GPT-5 as the main model.
+# The tuned GPT-5 setup behind ArcticSwarm's BrowseComp GPT-5 result.
+#
+# Usage (override output/endpoints for your run; swap eval.csv_path for your subset):
+#   arcticswarm-eval --config conf/bench/browsecomp_gpt.yaml \
+#     eval.output=results/browsecomp_gpt \
+#     llm.openai_base_url=https://api.openai.com/v1 \
+#     odl.hybrid_url=http://127.0.0.1:5002
+#
+# Grades with the public OpenAI GPT-4.1 judge (needs openai_api_key in
+# config_files.json, or set azure.enabled + your Azure deployment).
+
+prompt_style: web
+
+tools:
+  agent: [load_skill, reasoning, web_search, web_fetch, pdf_read, calculator, read_file]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research, tool-usage-policy-browsing]
+  profiles:
+    browsing:
+      tools: [web_search, web_fetch, pdf_read, calculator, read_file]
+      skills: [web-research, tool-usage-policy-browsing]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+swarm:
+  enabled: true
+  profiles: [browsing, reasoning]
+  enable_force_submit: false
+  auditor_reasoning_effort: high
+
+web:
+  enabled: true
+  disable_source_scorer: false
+  use_fetch_compactor: true
+  use_pdf_compactor: true
+  # Cap a single web_fetch/pdf_read result (and the compactor's selected
+  # output) to ~5k tokens (~20K chars) so one tool turn can't overflow context.
+  max_tool_output_tokens: 5000
+
+odl:
+  # Override for your PDF dataloader deployment; omit to auto-start the PDF backend locally.
+  hybrid_url: "http://127.0.0.1:5002"
+
+azure:
+  enabled: true
+
+llm:
+  model: "gpt-5"
+  reasoning_effort: high
+  subagent_reasoning_effort: high
+  enable_1m_context: true
+  compact_tokens: 200000
+  max_tool_calls_per_turn: 1
+  max_turns: 1200
+
+eval:
+  # NOTE: a dev-only model alias here 400s with ``unknown model`` on every
+  # case, which silently zeroes out the judge (the whole eval scores wrong).
+  # Pin to the canonical proxy model name; verify the resolved name in
+  # ``resolved_config.yaml`` after a dry-run before kicking off a full eval.
+  judge_model: openai-gpt-4.1
+  csv_path: arcticswarm/eval/data/browsecomp_subset_representative.csv
+  datasets: [BROWSECOMP_V1]
+  parallel: 9
+  timeout: 9000
+  max_retries: 2
+  checkpoint_interval: 1

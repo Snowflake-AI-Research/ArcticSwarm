@@ -1,0 +1,74 @@
+# BrowseComp — DM swarm (blocking surface, executing orchestrator) GPT-5 (high reasoning) + web search.
+# Direct-messaging ablation arm (the "DM" bar in the communication-mode comparison).
+# Routes through Azure OpenAI deployment via AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY.
+#
+# Usage:
+#   arcticswarm-eval --config conf/bench/browsecomp_gpt5_dm.yaml \
+#     eval.csv_path=arcticswarm/eval/data/browsecomp_balanced_split1.csv \
+#     eval.output=results/gpt5_dm_full \
+#     odl.hybrid_url=http://127.0.0.1:5002
+
+prompt_style: web
+
+tools:
+  agent: [read_file, calculator, web_search, web_fetch, pdf_read, load_skill]
+  agent_skills: [tool-usage-policy-browsing-dm-duo, web-research]
+  orchestrator: [reasoning, load_skill, web_search, web_fetch, pdf_read, read_file, calculator]
+  orchestrator_skills: [tool-usage-policy-browsing-dm-duo, web-research]
+  profiles:
+    browsing:
+      tools: [web_search, web_fetch, pdf_read, calculator, load_skill, read_file]
+      skills: [tool-usage-policy-browsing-dm-duo, web-research]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+web:
+  enabled: true
+  disable_source_scorer: false
+  use_fetch_compactor: true
+  use_pdf_compactor: true
+  # Cap a single web_fetch/pdf_read result (and the compactor's selected
+  # output) to ~5k tokens (~20K chars) so one tool turn can't overflow context.
+  max_tool_output_tokens: 5000
+
+vision: false
+
+swarm:
+  enabled: true
+  comm: [dm]
+  orchestrator_prompt_mode: exec_enabled
+  # The orchestrator uses DynamicCreateTaskTool, which exposes the
+  # blocking surface (``blocking`` / ``blocking_timeout``) in DM-realtime.
+  max_subagents: 16
+  max_subagent_tasks: 3
+  # ``realtime: true`` together with ``comm: [dm]`` (no BBS) triggers
+  # ``dm_realtime_direct_report`` which exposes ``blocking`` /
+  # ``blocking_timeout`` on ``create_task``.
+  realtime: true
+  realtime_timeout: 900
+  profiles: [browsing, reasoning]
+  enable_force_submit: false
+  auditor_reasoning_effort: high
+
+azure:
+  enabled: false
+
+llm:
+  model: "gpt-5"
+  reasoning_effort: "high"
+  subagent_reasoning_effort: high
+  max_turns: 1200
+  max_tool_calls_per_turn: 1
+  compact_tokens: 200000
+  enable_1m_context: true
+
+eval:
+  csv_path: arcticswarm/eval/data/browsecomp_subset_representative.csv
+  datasets: [BROWSECOMP_V1]
+  parallel: 18
+  timeout: 9000
+  checkpoint_interval: 1
+  judge_model: gpt-4-1-dev
+  gated_retry: false
+  max_retries: 2

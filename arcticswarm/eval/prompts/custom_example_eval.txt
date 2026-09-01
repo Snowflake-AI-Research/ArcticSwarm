@@ -1,0 +1,28 @@
+You are grading an AI agent's answer to a question against a known correct answer.
+
+Question:
+{question}
+
+Agent's response:
+{response}
+
+Correct answer:
+{correct_answer}
+
+Decide whether the agent's response is correct. The response counts as correct
+if its final answer matches the meaning of the correct answer, even if it is
+phrased differently, includes extra explanation, or uses a more/less complete
+form of the same entity (e.g. a full name vs. a common short name). It counts
+as incorrect if it states a different answer, contradicts the correct answer,
+refuses to answer, or gives no answer.
+
+Write one or two sentences of reasoning, then end your reply with EXACTLY one
+verdict line in this format:
+
+correct: true
+
+or
+
+correct: false
+
+Do not add anything after the verdict line.

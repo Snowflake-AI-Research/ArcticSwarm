@@ -1,0 +1,123 @@
+# BrowseComp — self-hosted Qwen 3.5-27B (vLLM), EFFICIENT swarm.
+#
+# A leaner A/B sibling of the default browsecomp_qwen.yaml: every efficiency
+# lever is ENABLED, trading a little accuracy for lower token/latency cost.
+# Relative to browsecomp_qwen.yaml, exactly these differ:
+#   - web.disable_source_scorer:         false -> true   (source scorer OFF)
+#   - swarm.context_reset:               false -> true   (reset subagent context between tasks)
+#   - swarm.reset_auditor_history:       false -> true   (reset auditor history each round)
+#   - enable_compact_reflection:         false -> true   (compact reflection schema)
+#   - swarm.max_subagents:               10    -> 6
+#   - web.browsing_max_reflection_loops: 2     -> 1
+# Everything else — the answer-recovery levers (reject_refusal_reports,
+# compaction_prune_junk, surface_bbs_candidates, enable_empty_answer_recovery),
+# the orchestrator fan-out fix, and subagent_max_turns — matches browsecomp_qwen.yaml.
+#
+# Usage (override endpoints + output for your deployment):
+#   arcticswarm-eval --config conf/bench/browsecomp_qwen_efficient.yaml \
+#     eval.output=results/<run_name> \
+#     llm.agent_model_base_url="http://localhost:7777/v1" \
+#     eval.parallel=10
+# Grade with the public OpenAI GPT-4.1 judge: eval.judge_model=openai-gpt-4.1
+
+prompt_style: web
+
+tools:
+  agent: [read_file, calculator, web_search, web_fetch, pdf_read, python_execute, load_skill]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research, tool-usage-policy-browsing]
+  profiles:
+    browsing:
+      tools: [read_file, calculator, web_search, web_fetch, pdf_read]
+      skills: [web-research, tool-usage-policy-browsing]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+swarm:
+  enabled: true
+  profiles: [browsing, reasoning]
+  enable_force_submit: false
+  auditor_reasoning_effort: "xhigh"
+  min_dedicated_reviewers: 1
+  min_builder_reviewers: 1
+  max_reviewer_remediations: 2
+  enforce_alt_task: true
+  # --- EFFICIENT: efficiency levers ENABLED (vs the browsecomp_qwen.yaml defaults) ---
+  context_reset: true            # reset subagent context between swarm tasks
+  disable_builder_idle: true     # no builder idle loop
+  reset_auditor_history: true    # reset auditor history each round
+  max_subagents: 6               # 16 -> 6
+
+# compact reflection schema (efficiency lever; top-level RunConfig field)
+enable_compact_reflection: true
+
+# --- Answer-recovery / behavioral levers (same as the default browsecomp_qwen.yaml) ---
+reject_refusal_reports: true
+compaction_prune_junk: true
+surface_bbs_candidates: true
+enable_empty_answer_recovery: true
+
+enable_candidate_emergence_sweep: true
+
+web:
+  enabled: true
+  collapse_duplicate_tool_history: true   # dup-trim: collapse repeated tool-call results in history
+  dup_history_keep_last: 1
+  search_neardup_hard_stop: 12            # query-diversity: force-stop reformulation loops at 12 + soft pivot nudge
+  disable_source_scorer: true             # EFFICIENT: source scorer OFF
+  use_fetch_compactor: true
+  use_pdf_compactor: true
+  # Cap a single web_fetch/pdf_read result (and the compactor's selected output)
+  # to ~5k tokens (~20K chars) so one tool turn can't overflow the 262K window
+  # before reactive compaction runs.
+  max_tool_output_tokens: 5000
+  browsing_max_reflection_loops: 1        # EFFICIENT: 2 -> 1
+
+odl:
+  # Override for your PDF dataloader deployment; omit to auto-start the PDF backend locally.
+  hybrid_url: "http://127.0.0.1:8080"
+
+# azure.enabled only flips use_azure_openai (consulted by the judge gating and
+# the closed-model paths disabled below); the vLLM agent client ignores it.
+azure:
+  enabled: true
+
+llm:
+  model: "Qwen/Qwen3.5-27B"
+  # vLLM OpenAI-compatible endpoint(s) (must end in /v1). Overridden on the CLI;
+  # accepts a comma-separated list for least-connections load-balancing.
+  agent_model_base_url: "http://localhost:7777/v1"  # point at your own vLLM endpoint(s)
+  reasoning_effort: "xhigh"
+  subagent_reasoning_effort: "xhigh"
+  # --- Qwen / vLLM knobs (model-card thinking-mode sampling) ---
+  enable_thinking: true
+  vllm_temperature: 0.6
+  vllm_top_p: 0.95
+  vllm_top_k: 20
+  vllm_presence_penalty: 0.0
+  vllm_max_model_len: 262144            # native 256K window
+  disable_closed_model_fallback: true   # no Claude/GPT calls during the run
+  max_tokens: 32000
+  compact_tokens: 180000
+  max_tool_calls_per_turn: 1
+  orchestrator_max_tool_calls_per_turn: 0   # role-aware fan-out fix (orchestrator not capped at 1)
+  subagent_max_turns: 200
+  timeout: 1200                         # xhigh thinking on 27B is slow; avoid spurious idle timeouts
+  max_turns: 1200
+
+eval:
+  # Self-hosted Qwen judge by default; override eval.judge_model=openai-gpt-4.1 to
+  # grade on the public OpenAI GPT-4.1 judge instead (needs openai_api_key in
+  # config_files.json, or azure.enabled + your Azure deployment).
+  judge_model: "Qwen/Qwen3-32B"
+  judge_model_base_url: "http://localhost:6666/v1"  # point at your own vLLM judge endpoint
+  csv_path: arcticswarm/eval/data/browsecomp_subset_representative.csv
+  datasets: [BROWSECOMP_V1]
+  parallel: 18
+  timeout: 9000
+  prepare_timeout: 1200
+  max_retries: 2
+  checkpoint_interval: 1
+  resume: true
+  rerun_errors: true

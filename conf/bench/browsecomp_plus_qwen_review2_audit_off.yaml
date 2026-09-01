@@ -1,0 +1,23 @@
+# Review teardown — STAGE 2 (cumulative): commit gate + board audit OFF.
+#
+# Overlay for the BrowseComp-Plus / Qwen3.5-27B baseline. Merge on top of
+# conf/bench/browsecomp_plus_qwen.yaml as a SECOND --config:
+#   arcticswarm-eval \
+#     -c conf/bench/browsecomp_plus_qwen.yaml \
+#     -c conf/bench/browsecomp_plus_qwen_review2_audit_off.yaml \
+#     eval.output=results/bcp_audit_off ...
+#
+# Removes the final commit gate (stage 1) AND the board audit / BBS review board.
+# Only the per-agent self-check (reflection) stays ON. Gated isolation kept.
+# Verified on BrowseComp-Plus: 82.6 -> 78.1 acc, ~0.59x tokens vs the full stack.
+swarm:
+  disable_final_verification: true
+  disable_auditor: true
+  disable_builder_idle: true
+  # Tear down the review board entirely.
+  min_dedicated_reviewers: 0
+  min_builder_reviewers: 0
+  max_reviewer_remediations: 0
+  skill_overrides:
+    swarm-orchestration-dynamic-web: swarm-orchestration-dynamic-web-noverify-noreview
+    bbs-coordination-web: bbs-coordination-web-noreview

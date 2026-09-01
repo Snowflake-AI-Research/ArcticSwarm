@@ -1,0 +1,138 @@
+# BrowseComp-Plus — DM swarm (blocking surface, executing orchestrator) on
+# self-hosted Qwen3.5-27B (vLLM), against a Snowflake Cortex Search corpus.
+#
+# DM-mode ABLATION of the dynamic-BBS BrowseComp-Plus baseline
+# (conf/bench/browsecomp_plus_qwen.yaml). Everything that CAN
+# be held constant vs that baseline is held constant (corpus backend, tools,
+# budgets, xhigh reasoning, Qwen sampling, endpoints); the ONLY variable is the
+# swarm communication architecture: dynamic-BBS -> DM.
+#
+# This file lists ONLY flags that actually TAKE EFFECT in DM mode on the corpus
+# backend. Baseline override flags that are verified no-ops here are omitted:
+#   * BBS/PrepareReportTool-gated (never built in dm_realtime_direct_report):
+#       surface_bbs_candidates, enable_candidate_emergence_sweep,
+#       min_dedicated_reviewers, min_builder_reviewers, max_reviewer_remediations,
+#       enforce_alt_task, enable_force_submit, eval.prepare_timeout
+#   * corpus-backend no-ops (only wired into the NATIVE web_search/web_fetch
+#     tools, which the corpus provider bypasses in tools/factory.py):
+#       web.search_neardup_hard_stop, web.fetch_cache_path
+#       (no result caching on corpus)
+#
+# DM MODE = comm:[dm] + realtime:true + no BBS -> dm_realtime_direct_report
+# (orchestrator.py:1033): the orchestrator runs its event-driven realtime loop
+# and DynamicCreateTaskTool exposes the blocking/blocking_timeout surface.
+# CORPUS: web.provider:corpus switches web_search -> CorpusSearchTool and
+# web_fetch -> CorpusFetchTool (factory.py:184,242), independent of comm mode.
+# web_fetch takes a DESCRIPTIVE QUERY (not a URL); there is NO pdf_read.
+# Qwen reasoning_effort is a binary thinking toggle (xhigh/high both = thinking
+# ON; only {none,low,minimal} disable it).
+
+prompt_style: web
+
+tools:
+  # Corpus toolset: NO pdf_read (corpus has no live web / PDFs).
+  agent: [read_file, calculator, web_search, web_fetch, load_skill]
+  agent_skills: [tool-usage-policy-browsing-corpus-dm-duo, web-research-corpus]
+  # In DM exec_enabled mode the orchestrator IS the executing agent and browses.
+  orchestrator: [reasoning, load_skill, web_search, web_fetch, read_file, calculator]
+  orchestrator_skills: [tool-usage-policy-browsing-corpus-dm-duo, web-research-corpus]
+  profiles:
+    browsing:
+      tools: [web_search, web_fetch, read_file, calculator, load_skill]
+      skills: [tool-usage-policy-browsing-corpus-dm-duo, web-research-corpus]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+web:
+  enabled: true
+  # Corpus retrieval backend: stub (default; no real retrieval) | cortex | local.
+  # Reproducing the paper's BrowseComp-Plus numbers requires pointing
+  # corpus_backend: cortex at your OWN Snowflake Cortex Search service and filling
+  # in the placeholders below (PAT loaded from ~/.snowflake/connections.toml under
+  # the [corpus_pat_connection] profile). No result caching is used on the corpus path.
+  provider: corpus
+  corpus_backend: stub
+  # corpus_backend: cortex
+  # corpus_account: <your-snowflake-account>
+  # corpus_db: <db>
+  # corpus_schema: <schema>
+  # corpus_chunked_service: <chunked-service>   # chunked snippets -> web_search
+  # corpus_service: <service>                    # full documents  -> web_fetch
+  # corpus_pat_connection: <connections.toml profile>
+  no_fetch: false
+  fetch_backend: corpus
+  use_fetch_compactor: false
+  use_pdf_compactor: false
+  max_tool_output_tokens: 5000
+  # Effective, backend-agnostic efficiency levers — applied at the tool-history /
+  # subagent-loop layer (context_management keys on tool NAME web_search/web_fetch,
+  # so they DO reach the corpus stream). Match the baseline.
+  collapse_duplicate_tool_history: true
+  dup_history_keep_last: 1
+  browsing_max_reflection_loops: 2
+
+vision: false
+
+swarm:
+  enabled: true
+  comm: [dm]
+  orchestrator_prompt_mode: exec_enabled
+  # DynamicCreateTaskTool exposes the blocking surface in DM-realtime.
+  max_subagents: 16
+  max_subagent_tasks: 3
+  # realtime:true + comm:[dm] (no BBS) -> dm_realtime_direct_report.
+  realtime: true
+  realtime_timeout: 900                 # maps to orchestrator_realtime_timeout (run_config.py:565)
+  profiles: [browsing, reasoning]
+  # auditor_reasoning_effort IS live in DM: DynamicCreateTaskTool auto-spawns an
+  # auditor on first create_task via for_auditor() (tools.py:1417/1431). xhigh ==
+  # baseline's `high` on Qwen (both = thinking ON).
+  auditor_reasoning_effort: "xhigh"
+
+# --- behavioral overrides that are LIVE in DM (verified) ---
+reject_refusal_reports: true          # LIVE: DM SendReportTool bounces refusal/give-up finals for a committed retry
+enable_empty_answer_recovery: true    # LIVE: post-hoc best-guess recovery turn after the realtime loop
+compaction_prune_junk: true           # LIVE: Agent/SubAgent proactive-compaction prune (not swarm-gated)
+
+# azure.enabled flips use_azure_openai (judge gating); the vLLM agent client
+# ignores it. Needed true for the Azure gpt-4-1-dev judge.
+azure:
+  enabled: true
+
+llm:
+  # Served-id trap: llm.model MUST be slash-free so vllm_served_model_id is
+  # applied on the wire (a slash in llm.model silently bypasses it -> 404).
+  model: qwen3.5-27b
+  vllm_served_model_id: Qwen/Qwen3.5-27B
+  # vLLM /v1 endpoint; accepts a comma-separated list of your own endpoints
+  # (load-balanced least-connections). Point at your own vLLM serving setup.
+  agent_model_base_url: "http://localhost:7777/v1"
+  reasoning_effort: "xhigh"
+  subagent_reasoning_effort: "xhigh"
+  # --- Qwen / vLLM thinking-mode sampling (model-card values) ---
+  enable_thinking: true
+  vllm_temperature: 0.6
+  vllm_top_p: 0.95
+  vllm_top_k: 20
+  vllm_presence_penalty: 0.0
+  vllm_max_model_len: 262144            # native 256K window
+  disable_closed_model_fallback: true   # no Claude/GPT calls during the run
+  max_tokens: 16384                     # matches the qwen baseline family (per-turn generation cap)
+  compact_tokens: 180000                # matches baseline
+  max_tool_calls_per_turn: 1
+  # LIVE in DM: the DM orchestrator IS the orchestrator agent, so this override is
+  # honored — unlimited tool calls/turn so batched create_task isn't truncated.
+  orchestrator_max_tool_calls_per_turn: 0
+  subagent_max_turns: 200
+  timeout: 120                          # matches the qwen baseline family (per-model-call timeout; streaming -> per-read/stall)
+  max_turns: 1200
+
+eval:
+  judge_model: gpt-4-1-dev
+  csv_path: arcticswarm/eval/data/browsecomp_plus_v1.csv
+  datasets: [BROWSECOMP_PLUS_V1]
+  parallel: 36
+  timeout: 20000
+  checkpoint_interval: 1
+  resume: true

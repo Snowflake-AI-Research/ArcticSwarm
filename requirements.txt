@@ -1,0 +1,43 @@
+# ArcticSwarm eval runtime dependencies.
+#
+# Pinned to the versions validated for BrowseComp / BrowseComp-Plus eval runs
+# (Python 3.11+; validated on 3.12). This mirrors the package set declared in
+# pyproject.toml but with exact pins for reproducible runs.
+#
+# Quick setup (see ENVIRONMENT.md for the full HOWTO incl. Java + credentials):
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+#   pip install -e . --no-deps      # install the arcticswarm / arcticswarm-eval CLIs
+#
+# NOTE: PDF reading (web_fetch on PDFs, pdf_read) additionally needs Java 11+
+# for the opendataloader-pdf hybrid backend — see ENVIRONMENT.md.
+
+# --- LLM providers ---
+anthropic==0.109.0
+openai==2.41.0
+
+# --- Snowflake (OPTIONAL — Cortex corpus / web-search backend only) ---
+# ArcticSwarm runs fully without Snowflake (imports are lazy). Install only if
+# you use the Cortex backend:  pip install 'arcticswarm[cortex]'
+# snowflake-connector-python==4.6.0
+
+# --- CLI / config / IO ---
+rich==15.0.0
+pyyaml==6.0.3
+prompt_toolkit==3.0.52
+requests==2.34.2
+
+# --- Web content extraction (Jina -> Serper MCP -> MarkItDown chain) ---
+markitdown==0.1.6
+mcp==1.27.2
+
+# --- PDF extraction (opendataloader-pdf hybrid -> pypdf fast-path -> Jina) ---
+opendataloader-pdf[hybrid]==2.4.7
+pypdf==6.13.1
+
+# --- Utilities ---
+markdown==3.10.2
+sqlparse==0.5.5
+
+# tomllib is stdlib on Python 3.11+; install tomli only if you must run 3.10.
+# tomli==2.0.1 ; python_version < "3.11"

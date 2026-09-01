@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: "If you use ArcticSwarm, please cite the following paper."
+title: "ArcticSwarm: Deferring Early Consensus in Long-Horizon Multi-Agent Research"
+license: Apache-2.0
+type: software
+authors:
+  - family-names: "Yoon"
+    given-names: "Soyoung"
+  - family-names: "Liu"
+    given-names: "Boyi"
+  - family-names: "Wang"
+    given-names: "Yite"
+  - family-names: "Wu"
+    given-names: "Ruofan"
+  - family-names: "Xu"
+    given-names: "Canwen"
+  - family-names: "Kuang"
+    given-names: "Nikki Lijing"
+  - family-names: "Yao"
+    given-names: "Zhewei"
+  - family-names: "Hwang"
+    given-names: "Seung-won"
+  - family-names: "He"
+    given-names: "Yuxiong"
+preferred-citation:
+  type: conference-paper
+  title: "ArcticSwarm: Deferring Early Consensus in Long-Horizon Multi-Agent Research"
+  year: 2026
+  collection-title: "Under review"
+  authors:
+    - family-names: "Yoon"
+      given-names: "Soyoung"
+    - family-names: "Liu"
+      given-names: "Boyi"
+    - family-names: "Wang"
+      given-names: "Yite"
+    - family-names: "Wu"
+      given-names: "Ruofan"
+    - family-names: "Xu"
+      given-names: "Canwen"
+    - family-names: "Kuang"
+      given-names: "Nikki Lijing"
+    - family-names: "Yao"
+      given-names: "Zhewei"
+    - family-names: "Hwang"
+      given-names: "Seung-won"
+    - family-names: "He"
+      given-names: "Yuxiong"

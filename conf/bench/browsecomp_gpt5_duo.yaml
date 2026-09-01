@@ -1,0 +1,73 @@
+# BrowseComp — Duo swarm (leader + auditor) GPT-5 (high reasoning) + web search.
+# Duo ablation arm (the "Duo" bar in the communication-mode comparison).
+# Routes through Azure OpenAI deployment via AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY.
+#
+# NOTE: in duo mode, the main worker (leader) inherits its tools from
+# ``tools.agent`` — ``tools.orchestrator`` is a no-op for the duo leader.
+#
+# Usage:
+#   arcticswarm-eval --config conf/bench/browsecomp_gpt5_duo.yaml \
+#     eval.csv_path=arcticswarm/eval/data/browsecomp_balanced_split1.csv \
+#     eval.output=results/gpt5_duo_full \
+#     odl.hybrid_url=http://127.0.0.1:5002
+
+prompt_style: web
+
+tools:
+  agent: [read_file, calculator, web_search, web_fetch, pdf_read, load_skill, reasoning]
+  agent_skills: [tool-usage-policy-browsing-dm-duo, web-research]
+  # NOTE: ``tools.orchestrator`` is a no-op in duo mode — the duo leader's
+  # tools come from ``tools.agent`` above. Kept here for symmetry only.
+  orchestrator: [load_skill]
+  orchestrator_skills: [tool-usage-policy-browsing-dm-duo, web-research]
+  profiles:
+    browsing:
+      tools: [calculator, web_search, web_fetch, pdf_read, load_skill, read_file]
+      skills: [tool-usage-policy-browsing-dm-duo, web-research]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+web:
+  enabled: true
+  disable_source_scorer: false
+  use_fetch_compactor: true
+  use_pdf_compactor: true
+  # Cap a single web_fetch/pdf_read result (and the compactor's selected
+  # output) to ~5k tokens (~20K chars) so one tool turn can't overflow context.
+  max_tool_output_tokens: 5000
+
+vision: false
+
+swarm:
+  enabled: true
+  comm: [duo]
+  realtime: true
+  profiles: [browsing, reasoning]
+  # ``enable_force_submit`` and ``blocking_prepare_report`` are NO-OPS in duo
+  # mode — the ``prepare_report`` tool is not registered on the Duo leader.
+  enable_force_submit: false
+  auditor_reasoning_effort: high
+
+
+azure:
+  enabled: false
+
+llm:
+  model: "gpt-5"
+  reasoning_effort: "high"
+  subagent_reasoning_effort: high
+  max_turns: 1200
+  max_tool_calls_per_turn: 1
+  compact_tokens: 200000
+  enable_1m_context: true
+
+eval:
+  csv_path: arcticswarm/eval/data/browsecomp_subset_representative.csv
+  datasets: [BROWSECOMP_V1]
+  parallel: 18
+  timeout: 9000
+  checkpoint_interval: 1
+  judge_model: gpt-4-1-dev
+  gated_retry: false
+  max_retries: 2

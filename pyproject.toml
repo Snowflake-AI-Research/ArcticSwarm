@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=77.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arcticswarm"
+version = "0.1.0"
+description = "Multi-agent framework for long-horizon web research, with a reproducible BrowseComp / BrowseComp-Plus evaluation harness."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [
+    { name = "Soyoung Yoon" },
+    { name = "Boyi Liu" },
+    { name = "Yite Wang" },
+    { name = "Ruofan Wu" },
+    { name = "Canwen Xu" },
+    { name = "Nikki Lijing Kuang" },
+    { name = "Zhewei Yao" },
+    { name = "Seung-won Hwang" },
+    { name = "Yuxiong He" },
+]
+keywords = [
+    "multi-agent", "llm", "agents", "web-research", "deep-research",
+    "browsecomp", "benchmark", "evaluation",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "anthropic>=0.42.0",
+    "openai>=1.30.0",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+    "prompt_toolkit>=3.0",
+    "requests>=2.28.0",
+    # Web content extraction (Jina -> Serper MCP -> MarkItDown chain)
+    "markitdown>=0.1.3",
+    "mcp>=1.0.0",
+    # PDF extraction (opendataloader-pdf hybrid -> pypdf fast-path -> Jina chain)
+    "opendataloader-pdf[hybrid]>=2.0",
+    "pypdf>=4.0",
+    # Utilities
+    "markdown>=3.5",
+    "sqlparse>=0.5",
+]
+
+# Set these once the public GitHub org/repo is decided, then uncomment.
+# [project.urls]
+# Homepage = "https://github.com/<your-org>/arcticswarm"
+# Repository = "https://github.com/<your-org>/arcticswarm"
+# Issues = "https://github.com/<your-org>/arcticswarm/issues"
+
+[project.scripts]
+arcticswarm = "arcticswarm.cli:main"
+arcticswarm-eval = "arcticswarm.eval.cli:main"
+
+[project.optional-dependencies]
+# Snowflake Cortex corpus / web-search backend (OPTIONAL — ArcticSwarm runs
+# fully without it; imports are lazy). Install: pip install 'arcticswarm[cortex]'
+cortex = ["snowflake-connector-python>=3.6.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+include = ["arcticswarm*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["arcticswarm"]

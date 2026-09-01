@@ -1,0 +1,62 @@
+# BrowseComp-Plus benchmark — dynamic swarm with a Snowflake Cortex Search corpus.
+# Replaces live web search/fetch with queries against a static ~100K document corpus.
+# Usage: arcticswarm-eval --config conf/browsecomp_plus.yaml eval.output=results/browsecomp_plus
+
+tools:
+  agent: [load_skill, web_search, web_fetch, calculator, read_file]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research-corpus, tool-usage-policy-browsing-corpus]
+  profiles:
+    browsing:
+      tools: [web_search, web_fetch, read_file, calculator]
+      skills: [web-research-corpus, tool-usage-policy-browsing-corpus]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+swarm:
+  enabled: true
+  profiles: [browsing, reasoning]
+  enable_force_submit: false
+  auditor_reasoning_effort: high
+
+web:
+  enabled: true
+  provider: corpus
+  # Corpus retrieval backend: stub (default; no real retrieval) | cortex | local.
+  # The BrowseComp-Plus numbers in the paper used Snowflake Cortex Search
+  # whose coordinates would be supplied (commented) below. To reproduce against
+  # such a service, set corpus_backend: cortex and fill in the placeholders
+  # (needs a PAT in ~/.snowflake/connections.toml <connections.toml profile>). To plug your own
+  # search service, set corpus_backend: local and corpus_local_path to a corpus JSONL.
+  corpus_backend: stub
+  # corpus_backend: cortex
+  # corpus_account: <your-account>
+  # corpus_db: <db>
+  # corpus_schema: <schema>
+  # corpus_chunked_service: <chunked-service>
+  # corpus_service: <service>
+  no_fetch: false
+  fetch_backend: corpus
+  use_fetch_compactor: false
+  use_pdf_compactor: false
+  # Cap a single web_fetch/pdf_read result to ~5k tokens (~20K chars) so one
+  # tool turn can't overflow context (applies even with the compactor off).
+  max_tool_output_tokens: 5000
+
+llm:
+  max_turns: 1200
+  reasoning_effort: xhigh
+  subagent_reasoning_effort: high
+  compact_tokens: 200000
+
+azure:
+  enabled: false
+
+eval:
+  judge_model: gpt-4-1-dev
+  csv_path: arcticswarm/eval/data/browsecomp_plus_subset_representative.csv
+  datasets: [BROWSECOMP_PLUS_V1]
+  parallel: 18
+  timeout: 9000
+  checkpoint_interval: 1

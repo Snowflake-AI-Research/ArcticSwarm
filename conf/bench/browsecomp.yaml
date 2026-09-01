@@ -1,0 +1,52 @@
+# BrowseComp benchmark — dynamic swarm with web search.
+# Usage: arcticswarm-eval --config conf/bench/browsecomp.yaml eval.output=results/browsecomp odl.hybrid_url=http://127.0.0.1:5002
+
+prompt_style: web
+
+tools:
+  agent: [load_skill, reasoning, web_search, web_fetch, pdf_read, calculator, read_file]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research, tool-usage-policy-browsing]
+  profiles:
+    browsing:
+      tools: [web_search, web_fetch, pdf_read, calculator, read_file]
+      skills: [web-research, tool-usage-policy-browsing]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+swarm:
+  enabled: true
+  profiles: [browsing, reasoning]
+  enable_force_submit: false
+  auditor_reasoning_effort: high
+
+web:
+  enabled: true
+  disable_source_scorer: false
+  use_fetch_compactor: true
+  use_pdf_compactor: true
+  # Cap a single web_fetch/pdf_read result (and the compactor's selected
+  # output) to ~5k tokens (~20K chars) so one tool turn can't overflow context.
+  max_tool_output_tokens: 5000
+
+llm:
+  max_turns: 1200
+  reasoning_effort: xhigh
+  subagent_reasoning_effort: high
+  compact_tokens: 200000
+  max_tool_calls_per_turn: 1
+  enable_1m_context: true
+
+eval:
+  csv_path: arcticswarm/eval/data/browsecomp_subset_representative.csv
+  datasets: [BROWSECOMP_V1]
+  parallel: 18
+  timeout: 9000
+  checkpoint_interval: 1
+  judge_model: gpt-4-1-dev
+  gated_retry: false
+  max_retries: 2
+
+azure:
+  enabled: false

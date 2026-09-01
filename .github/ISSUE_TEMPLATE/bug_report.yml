@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a problem with ArcticSwarm or the evaluation harness.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please **do not** include API keys,
+        tokens, or the contents of `config_files.json` in this report.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact command(s) you ran, including the config and any CLI overrides.
+      placeholder: |
+        arcticswarm-eval -c conf/bench/browsecomp.yaml eval.limit=1 eval.output=/tmp/smoke
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / traceback
+      description: Paste the relevant output. Redact any secrets first.
+      render: text
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python version, model/provider, and whether you use the self-hosted (vLLM) path.
+      placeholder: |
+        - OS:
+        - Python:
+        - Model / provider:
+        - Install: pip install -e ".[dev]"  (or requirements.txt)
+    validations:
+      required: true

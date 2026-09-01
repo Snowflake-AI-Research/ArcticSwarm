@@ -1,0 +1,30 @@
+# Review teardown — STAGE 3 (cumulative): commit gate + board audit + self-check OFF.
+#
+# Overlay for the BrowseComp-Plus / Qwen3.5-27B baseline. Merge on top of
+# conf/bench/browsecomp_plus_qwen.yaml as a SECOND --config:
+#   arcticswarm-eval \
+#     -c conf/bench/browsecomp_plus_qwen.yaml \
+#     -c conf/bench/browsecomp_plus_qwen_review3_selfcheck_off.yaml \
+#     eval.output=results/bcp_selfcheck_off ...
+#
+# All three review gates OFF: final commit gate + board audit + per-agent
+# self-check (browsing reflect/assess loop). Gated isolation is still kept.
+# This is the leanest review setting. Verified on BrowseComp-Plus:
+# 82.6 -> 76.3 acc, ~0.24x tokens vs the full stack (~4-5x faster).
+swarm:
+  disable_final_verification: true
+  disable_auditor: true
+  disable_builder_idle: true
+  min_dedicated_reviewers: 0
+  min_builder_reviewers: 0
+  max_reviewer_remediations: 0
+  skill_overrides:
+    swarm-orchestration-dynamic-web: swarm-orchestration-dynamic-web-noverify-noreview
+    bbs-coordination-web: bbs-coordination-web-noreview
+    # Iterative reflect/assess loop removed -> single-pass research.
+    web-research-corpus: web-research-corpus-singlepass
+
+web:
+  # Self-check (reflection) OFF.
+  browsing_max_reflection_loops: 0
+  disable_self_reflection: true

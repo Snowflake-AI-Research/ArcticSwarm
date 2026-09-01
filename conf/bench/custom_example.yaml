@@ -1,0 +1,84 @@
+# =============================================================================
+# Custom evaluation template — copy this file and edit it for your own dataset.
+#
+# This config evaluates an ArcticSwarm agent on YOUR questions, using YOUR gold
+# answers, optionally graded by YOUR own judge rubric — without editing any
+# framework code. See docs/custom_evaluation.md for the full walkthrough.
+#
+# Run it with:
+#   arcticswarm-eval --config conf/bench/custom_example.yaml
+#
+# Any value below can also be overridden on the command line, e.g.:
+#   arcticswarm-eval --config conf/bench/custom_example.yaml eval.parallel=8
+# =============================================================================
+
+# Prompt style for the agent's system prompt. "web" wires in web-research
+# guidance; leave empty ("") for a plain assistant.
+prompt_style: web
+
+llm:
+  # The model the agent runs on. Use any model id your settings can reach
+  # (e.g. claude-sonnet-4-5, gpt-5, or a self-hosted vLLM model name).
+  model: claude-sonnet-4-5
+  max_turns: 150
+
+# A small swarm: an orchestrator that fans work out to web-browsing subagents.
+# Set swarm.enabled=false for a single-agent run.
+swarm:
+  enabled: true
+  profiles: [browsing, reasoning]
+
+# Tools available to the agent / orchestrator / each subagent profile.
+tools:
+  agent: [read_file, calculator, web_search, web_fetch, pdf_read, python_execute, load_skill]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research, tool-usage-policy-browsing]
+  profiles:
+    browsing:
+      tools: [read_file, calculator, web_search, web_fetch, pdf_read]
+      skills: [web-research, tool-usage-policy-browsing]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+# Web access. Disable (enabled: false) for offline / closed-book evals.
+web:
+  enabled: true
+  # Cap a single web_fetch/pdf_read result to ~5k tokens so one tool turn
+  # cannot overflow the agent's context window.
+  max_tool_output_tokens: 5000
+
+eval:
+  # ---- YOUR DATASET --------------------------------------------------------
+  # Path to your CSV in the unified eval format (see
+  # arcticswarm/eval/data/external/utils.py::write_unified_eval_csv and
+  # docs/custom_evaluation.md). Relative paths resolve from the repo root.
+  csv_path: path/to/my_dataset.csv
+  # The dataset name(s) to evaluate. Must match the ATTRIBUTES.dataset value
+  # written into your CSV rows (case-insensitive).
+  datasets: [MY_DATASET]
+
+  # ---- JUDGE ---------------------------------------------------------------
+  # The model used to grade answers. Any judge-capable model id works
+  # (e.g. openai-gpt-4.1, claude-4-sonnet).
+  judge_model: openai-gpt-4.1
+  # OPTIONAL custom judge rubric. When set, this template grades EVERY case,
+  # overriding the built-in per-dataset judges. The template may reference
+  # {question}, {response}, and {correct_answer}. Remove this line to use the
+  # default QA judge instead. See arcticswarm/eval/prompts/custom_example_eval.txt.
+  custom_judge_prompt: arcticswarm/eval/prompts/custom_example_eval.txt
+
+  # ---- RUN KNOBS -----------------------------------------------------------
+  # Where results land: results/<output>/report.json, breakdown.md, trajectories/.
+  output: results/custom_example
+  # How many cases to run concurrently.
+  parallel: 3
+  # Per-case wall-clock budget (seconds).
+  timeout: 300
+  # Set vip_only: false unless your CSV rows are explicitly marked is_vip.
+  # write_unified_eval_csv marks rows is_vip=true by default, so the default
+  # (true) already includes them; flip to false if you write your own CSV
+  # without the is_vip flag.
+  vip_only: true
+  # Limit to the first N cases (0 = all) — handy for a quick smoke test.
+  limit: 0
