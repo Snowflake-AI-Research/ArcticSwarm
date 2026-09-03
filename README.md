@@ -1,7 +1,6 @@
 <!--
   Before making the repo public, replace <your-org> below with the real GitHub
-  org/repo (clone command + optionally uncomment [project.urls] in pyproject.toml),
-  and point the Paper badge at the arXiv/proceedings URL once available.
+  org/repo (clone command + optionally uncomment [project.urls] in pyproject.toml).
 -->
 
 <div align="center">
@@ -12,7 +11,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-D22128.svg?style=flat-square)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
-[![Paper](https://img.shields.io/badge/Paper-cite-B31B1B.svg?style=flat-square)](#-citation)
+[![arXiv](https://img.shields.io/badge/arXiv-2609.01870-B31B1B.svg?style=flat-square)](https://arxiv.org/abs/2609.01870)
 [![Blog](https://img.shields.io/badge/Blog-engineering_deep_dive-1E90FF.svg?style=flat-square)](https://www.snowflake.com/en/blog/engineering/arcticswarm-multi-agent-system-architecture/)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-6f42c1.svg?style=flat-square)](CONTRIBUTING.md)
 
@@ -25,6 +24,7 @@ In plain terms: instead of asking one agent the same question many times and maj
 ## Contents
 
 - [✨ Highlights](#-highlights)
+- [🎬 See it in action](#-see-it-in-action)
 - [🔥 Why ArcticSwarm?](#-why-arcticswarm)
 - [🏆 Headline results](#-headline-results)
 - [🧠 How it works](#-how-it-works)
@@ -49,6 +49,41 @@ In plain terms: instead of asking one agent the same question many times and maj
 - **🌐 Live web + pluggable corpus.** BrowseComp runs against the live web; BrowseComp-Plus retrieves from a fixed corpus through a pluggable backend (`stub` / `local` / `cortex`) — the harness runs out of the box.
 - **🧪 Bring your own eval.** Point a config at your CSV and (optionally) your own judge rubric — **no framework code to edit**.
 - **🔍 Reproducible + inspectable.** Every BrowseComp / BrowseComp-Plus number comes from a shipped config in `conf/bench/` with the GPT-4.1 judge, and a bundled viewer replays any run's per-agent trajectories, bulletin-board posts, and judge verdicts.
+
+## 🎬 See it in action
+
+Two runs on hard, real-world questions — the whole swarm powered by a single model, **Claude Sonnet 4.6** (orchestrator, subagents, and reviewers alike; no other model in the loop).
+
+**① Live in the CLI** — the swarm researching a question end-to-end in the terminal:
+
+> **Query** — *Explain Ether.fi's card payment flow end-to-end — including risk allocation, async failure modes between Visa and onchain settlement, UX limitations, and improvements.*
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/3cf375a0-63be-42f1-8c17-f8071beb137f" controls muted preload="metadata" width="840"></video>
+</div>
+
+**② The rendered HTML report** — the committed answer with inline citations and navigable references:
+
+> **Query** — *Estimate the total addressable market (TAM) for post-training GPU compute.*
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/0f3623ec-4ce4-4059-b147-e858af7cbb38" controls muted preload="metadata" width="840"></video>
+</div>
+
+### Run it yourself
+
+The demo uses the shipped [`conf/demo.yaml`](conf/demo.yaml) preset — the full dynamic swarm (gated bulletin board, alternative-search gate, and the 3-stage review with the reviewer-diversity gate). After you've [installed](#-1-install) and [set up your settings file](#-2-configure):
+
+```bash
+export ARCTICSWARM_SETTINGS_PATH=~/.snowflake/snowswarm_settings.json
+arcticswarm --config conf/demo.yaml \
+  llm.model=claude-sonnet-4-6 \
+  llm.reasoning_effort=xhigh \
+  llm.subagent_reasoning_effort=xhigh \
+  eval.output=results/demo_result
+```
+
+This launches the interactive REPL — paste your question at the prompt and press **Enter twice** to submit (`/help` for commands). The run writes its report and per-agent trajectories under `results/demo_result/`; replay any run interactively with the [viewer](#-7-results-and-the-viewer).
 
 ## 🔥 Why ArcticSwarm?
 
@@ -353,14 +388,17 @@ Contributions are welcome! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for dev se
 
 ## 📎 Citation
 
-If you use ArcticSwarm, please cite the paper:
+If you use ArcticSwarm, please cite the paper ([arXiv:2609.01870](https://arxiv.org/abs/2609.01870)):
 
 ```bibtex
-@inproceedings{arcticswarm,
-  title     = {ArcticSwarm: Deferring Early Consensus in Long-Horizon Multi-Agent Research},
-  author    = {Yoon, Soyoung and Liu, Boyi and Wang, Yite and Wu, Ruofan and Xu, Canwen and Kuang, Nikki Lijing and Yao, Zhewei and Hwang, Seung-won and He, Yuxiong},
-  booktitle = {Under review},
-  year      = {2026}
+@misc{yoon2026arcticswarmdeferringearlyconsensus,
+      title={ArcticSwarm: Deferring Early Consensus in Long-Horizon Multi-Agent Research}, 
+      author={Soyoung Yoon and Boyi Liu and Yite Wang and Ruofan Wu and Canwen Xu and Nikki Lijing Kuang and Seung-won Hwang and Yuxiong He and Zhewei Yao},
+      year={2026},
+      eprint={2609.01870},
+      archivePrefix={arXiv},
+      primaryClass={cs.MA},
+      url={https://arxiv.org/abs/2609.01870}, 
 }
 ```
 

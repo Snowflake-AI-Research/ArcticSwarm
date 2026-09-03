@@ -53,3 +53,7 @@ htmlcov/
 # Local scratch
 scratch/
 *.scratch
+
+# Demo videos live on GitHub's user-attachments CDN and are embedded in the
+# README by URL; the local source clips under assets/ are not tracked.
+assets/*.mp4

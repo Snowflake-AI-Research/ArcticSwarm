@@ -16,17 +16,21 @@ authors:
     given-names: "Canwen"
   - family-names: "Kuang"
     given-names: "Nikki Lijing"
-  - family-names: "Yao"
-    given-names: "Zhewei"
   - family-names: "Hwang"
     given-names: "Seung-won"
   - family-names: "He"
     given-names: "Yuxiong"
+  - family-names: "Yao"
+    given-names: "Zhewei"
 preferred-citation:
-  type: conference-paper
+  type: article
   title: "ArcticSwarm: Deferring Early Consensus in Long-Horizon Multi-Agent Research"
   year: 2026
-  collection-title: "Under review"
+  url: "https://arxiv.org/abs/2609.01870"
+  identifiers:
+    - type: other
+      value: "arXiv:2609.01870"
+      description: "arXiv preprint arXiv:2609.01870 [cs.MA]"
   authors:
     - family-names: "Yoon"
       given-names: "Soyoung"
@@ -40,9 +44,9 @@ preferred-citation:
       given-names: "Canwen"
     - family-names: "Kuang"
       given-names: "Nikki Lijing"
-    - family-names: "Yao"
-      given-names: "Zhewei"
     - family-names: "Hwang"
       given-names: "Seung-won"
     - family-names: "He"
       given-names: "Yuxiong"
+    - family-names: "Yao"
+      given-names: "Zhewei"
