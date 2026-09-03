@@ -1,0 +1,79 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Demo config for the interactive ArcticSwarm CLI.
+#
+# Full dynamic swarm over the live web, driven by Claude Sonnet 4.6, with every
+# coordination mechanism enabled:
+#   - gated bulletin board (read isolation) during evidence gathering
+#   - contrarian / alternative-search gate (enforce_alt_task)
+#   - 3-stage review: self-check -> board audit -> commit gate, including the
+#     two-slot reviewer-diversity gate (dedicated reviewer + builder reviewer)
+#
+# Run:
+#   arcticswarm --config conf/demo.yaml
+#   (interactive REPL — type a question, press Enter twice to submit; /help for commands)
+#
+# Prerequisites (see README / ENVIRONMENT.md):
+#   - Anthropic API key in config_files.json:      {"api_key": "sk-ant-..."}
+#   - A web-search key in the same file:           "brave_api_key" or "serper_api_key"
+
+prompt_style: web
+
+llm:
+  model: claude-sonnet-4-6         # newest Sonnet in the registry (there is no "Sonnet 5")
+  reasoning_effort: high           # leader/orchestrator thinking; set to xhigh for max depth
+  subagent_reasoning_effort: high
+  enable_thinking: true
+  max_turns: 1200
+  compact_tokens: 200000
+
+tools:
+  agent: [load_skill, reasoning, web_search, web_fetch, pdf_read, calculator, read_file]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research, tool-usage-policy-browsing]
+  profiles:
+    browsing:
+      tools: [web_search, web_fetch, pdf_read, calculator, read_file]
+      skills: [web-research, tool-usage-policy-browsing]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+web:
+  enabled: true
+  disable_source_scorer: false
+  disable_self_reflection: false   # self-check review gate ON
+  use_fetch_compactor: true
+  use_pdf_compactor: true
+  max_tool_output_tokens: 5000
+
+swarm:
+  enabled: true                    # dynamic swarm (parallel agent teams)
+  comm: [bbs]                      # gated bulletin board (read isolation)
+  profiles: [browsing, reasoning]
+  max_subagents: 16                # dynamic-mode concurrency cap
+  max_teammates: 5
+  enforce_alt_task: true           # contrarian / alternative-search gate ON
+  disable_auditor: false           # dedicated reviewer ON
+  min_dedicated_reviewers: 1       # two-slot review gate:
+  min_builder_reviewers: 1         #   dedicated reviewer + builder reviewer both required
+  max_reviewer_remediations: 2
+  blocking_prepare_report: true    # commit gate ON
+  disable_final_verification: false
+  auditor_reasoning_effort: high
+
+azure:
+  enabled: false
