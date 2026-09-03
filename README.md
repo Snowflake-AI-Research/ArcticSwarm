@@ -1,7 +1,6 @@
 <!--
   Before making the repo public, replace <your-org> below with the real GitHub
-  org/repo (clone command + optionally uncomment [project.urls] in pyproject.toml),
-  and point the Paper badge at the arXiv/proceedings URL once available.
+  org/repo (clone command + optionally uncomment [project.urls] in pyproject.toml).
 -->
 
 <div align="center">
@@ -12,7 +11,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-D22128.svg?style=flat-square)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
-[![Paper](https://img.shields.io/badge/Paper-cite-B31B1B.svg?style=flat-square)](#-citation)
+[![arXiv](https://img.shields.io/badge/arXiv-2609.01870-B31B1B.svg?style=flat-square)](https://arxiv.org/abs/2609.01870)
 [![Blog](https://img.shields.io/badge/Blog-engineering_deep_dive-1E90FF.svg?style=flat-square)](https://www.snowflake.com/en/blog/engineering/arcticswarm-multi-agent-system-architecture/)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-6f42c1.svg?style=flat-square)](CONTRIBUTING.md)
 
@@ -353,14 +352,17 @@ Contributions are welcome! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for dev se
 
 ## 📎 Citation
 
-If you use ArcticSwarm, please cite the paper:
+If you use ArcticSwarm, please cite the paper ([arXiv:2609.01870](https://arxiv.org/abs/2609.01870)):
 
 ```bibtex
-@inproceedings{arcticswarm,
-  title     = {ArcticSwarm: Deferring Early Consensus in Long-Horizon Multi-Agent Research},
-  author    = {Yoon, Soyoung and Liu, Boyi and Wang, Yite and Wu, Ruofan and Xu, Canwen and Kuang, Nikki Lijing and Yao, Zhewei and Hwang, Seung-won and He, Yuxiong},
-  booktitle = {Under review},
-  year      = {2026}
+@misc{yoon2026arcticswarmdeferringearlyconsensus,
+      title={ArcticSwarm: Deferring Early Consensus in Long-Horizon Multi-Agent Research}, 
+      author={Soyoung Yoon and Boyi Liu and Yite Wang and Ruofan Wu and Canwen Xu and Nikki Lijing Kuang and Seung-won Hwang and Yuxiong He and Zhewei Yao},
+      year={2026},
+      eprint={2609.01870},
+      archivePrefix={arXiv},
+      primaryClass={cs.MA},
+      url={https://arxiv.org/abs/2609.01870}, 
 }
 ```
 
