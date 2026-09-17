@@ -1,0 +1,172 @@
+# LoHoSearch benchmark — dynamic swarm with live web search, self-hosted Qwen3.5-27B (vLLM).
+#
+# LoHoSearch (arXiv 2606.12837, Meituan LongCat) is a 544-question
+# knowledge-graph-generated benchmark for LONG-HORIZON search: each question is
+# a multi-constraint entity-identification puzzle whose constraints chain
+# several hops through obfuscated placeholder entities ("Municipality A",
+# "Horse C") with deliberately vague temporal/quantitative anchors. Because the
+# items are generated from a KG over 7M+ Wikipedia entities rather than
+# hand-authored, they push past the human-annotator difficulty ceiling that
+# BrowseComp has saturated against. Best published score is GPT-5.5 at 34.74%;
+# most frontier models land in the 10-16% band, so expect low absolute numbers.
+#
+# This config is the SEAL-0 / BrowseComp "full winning swarm" retargeted to
+# LoHoSearch, with the settings from the 0729 BrowseComp-Plus run baked in. The
+# WHOLE agent (orchestrator + every subagent + compaction + source-scorer /
+# content-compactor tool LLMs) runs on the self-hosted Qwen3.5-27B vLLM
+# endpoint.
+#
+# LIVE WEB, NOT A CORPUS: LoHoSearch assumes the BrowseComp tool surface
+# (`search` keyword queries + `browse` URL fetches) against the open web. Unlike
+# conf/bench/browsecomp_plus_qwen.yaml, do NOT set web.provider=corpus /
+# web.corpus_backend=cortex here — there is no static document corpus for this
+# benchmark.
+#
+# Judge: LoHoSearch's protocol averages TWO gradings (BrowseComp prompt on
+# GPT-4.1 + SimpleQA prompt on Qwen2.5-32B). We score the first — the
+# BrowseComp grading prompt on Azure GPT-4.1 — as the canonical metric, so our
+# number is the GPT-4.1 component, not the 2-judge mean. Comparisons against
+# the paper's table should note this. Judging is post-hoc and never touches the
+# agent trajectory.
+#
+# Usage (from a pod labeled dss=true so in-cluster DNS resolves):
+#   arcticswarm-eval --config conf/bench/lohosearch_qwen.yaml \
+#     eval.output=/data/soyoung/important/arcticswarm/lohosearch \
+#     llm.agent_model_base_url="http://soyoung-rebuttal-temp-oneday:7777/v1"
+#
+# See scripts/launch_lohosearch_qwen.sh for the full launch command.
+
+prompt_style: web
+
+tools:
+  agent: [read_file, calculator, web_search, web_fetch, pdf_read, python_execute, load_skill]
+  orchestrator: [reasoning, load_skill]
+  agent_skills: [web-research, tool-usage-policy-browsing]
+  profiles:
+    browsing:
+      tools: [read_file, calculator, web_search, web_fetch, pdf_read]
+      skills: [web-research, tool-usage-policy-browsing]
+    reasoning:
+      tools: [reasoning]
+      skills: [deep-reasoning]
+
+swarm:
+  enabled: true
+  profiles: [browsing, reasoning]
+  enable_force_submit: false
+  auditor_reasoning_effort: "xhigh"
+  max_subagents: 16
+  # Reviewer-diversity gate: require a VERIFIED #consensus verdict from BOTH a
+  # builder (a subagent that searched first-hand) AND the dedicated reasoning
+  # auditor before the final report unlocks. Missing sources are auto-spawned +
+  # waited on (bounded by max_reviewer_remediations, then advisory-degrade so
+  # the run never hangs).
+  min_dedicated_reviewers: 1
+  min_builder_reviewers: 1
+  max_reviewer_remediations: 2
+  # Premature-commitment guard: require >=1 ALTERNATIVE/CONTRARIAN task before
+  # the report unlocks. Especially load-bearing on LoHoSearch, where a
+  # partially-satisfied candidate looks convincing but violates a later
+  # constraint — the alt sweep is what surfaces the rival entity.
+  enforce_alt_task: true
+  # Keep subagent context ACROSS tasks (no reset): long-horizon constraint
+  # chains mean an agent's earlier hops stay relevant to its later ones.
+  context_reset: false
+
+# Fire the candidate-emergence rival sweep as soon as a candidate lands on the
+# BBS, so its findings have time to influence the answer; the prepare_report
+# alt gate above remains the hard backstop.
+enable_candidate_emergence_sweep: true
+
+# Emit the fullest canonical answer form + honor the question's requested
+# format, and bounce a refusal/give-up FINAL ANSWER back for a committed retry
+# (bounded). Every LoHoSearch question has a KG-verified unique answer, so a
+# give-up scores the same 0 as a committed wrong answer.
+reject_refusal_reports: true
+# Surface BBS candidate answers into the report context (answer-retention
+# lever: the >=31% "found-but-not-selected" family) ...
+surface_bbs_candidates: true
+# ... and recover rather than scoring 0 when the final report comes back empty.
+enable_empty_answer_recovery: true
+# Drop junk (dead fetches, boilerplate) first during compaction so the
+# constraint-relevant evidence survives the 180K squeeze.
+compaction_prune_junk: true
+
+web:
+  enabled: true
+  # Cap a single web_fetch/pdf_read result to ~5k tokens (~20K chars) so one
+  # tool turn can't overflow the 262K window before reactive compaction runs.
+  max_tool_output_tokens: 5000
+  # --- Search provider: BRAVE ONLY -------------------------------------------
+  # The Tavily and Serper accounts are out of credit, so leaving them in the
+  # fallback chain only buys failed requests and latency on every Brave miss.
+  # Pin the order to Brave alone (default was ["brave","tavily","serper"]).
+  # NOTE: this also means pdf_read's Serper fallback is dead — PDF extraction
+  # rides Jina Reader plus the local OpenDataLoader/docling path. Ensure
+  # `brave_api_key` (and `jina_api_key`) resolve from your settings JSON.
+  search_provider_order: ["brave"]
+  # --- Caching: disable the two GLOBAL cross-run caches ---------------------
+  fetch_cache_path: "off"
+  enable_search_cache: false
+  search_cache_read: false
+  # NOTE: the per-question local content cache (swarm.enable_content_cache,
+  # default true) is intentionally LEFT ON — it only dedups fetches within a
+  # single question's swarm.
+  # --- Repetition control: LoHoSearch's vague anchors ("early 1960s") invite
+  # near-duplicate queries; collapse repeated tool history and hard-stop the
+  # near-dup search loop well before the 40 default.
+  collapse_duplicate_tool_history: true
+  dup_history_keep_last: 1
+  search_neardup_hard_stop: 12
+  browsing_max_reflection_loops: 2
+
+# Azure GPT-4.1 judge (the only closed-model call; post-hoc grading only).
+azure:
+  enabled: true
+
+llm:
+  model: "qwen3.5-27b"
+  # The exact id the vLLM server registers via --served-model-name. Both keys
+  # are required: a slash in llm.model silently bypasses this override -> 404,
+  # so llm.model stays bare and the slashed id goes here.
+  vllm_served_model_id: "Qwen/Qwen3.5-27B"
+  # vLLM OpenAI-compatible endpoint (must end in /v1). Override on the CLI.
+  agent_model_base_url: "http://soyoung-rebuttal-temp-oneday:7777/v1"
+  reasoning_effort: "xhigh"
+  subagent_reasoning_effort: "xhigh"
+  # --- Qwen / vLLM knobs ---
+  enable_thinking: true                 # Qwen <think> mode (binary; xhigh => on)
+  vllm_temperature: 0.6                 # model-card thinking-mode sampling
+  vllm_top_p: 0.95
+  vllm_top_k: 20
+  vllm_presence_penalty: 0.0
+  vllm_max_model_len: 262144            # native 256K window
+  disable_closed_model_fallback: true   # no Claude/GPT calls during the run (judge is separate)
+  max_tokens: 32000
+  compact_tokens: 180000
+  max_tool_calls_per_turn: 1
+  # Orchestrator runs UNLIMITED tool calls per turn so its batched create_task
+  # fan-out + wait_for_tasks aren't silently truncated to 1 (dropped calls were
+  # never re-queued -> lost tasks + near-serial fan-out). Browsing subagents
+  # keep the disciplined 1-call/turn above. 0 = unlimited orchestrator.
+  orchestrator_max_tool_calls_per_turn: 0
+  # post_to_bbs always executes even when a subagent batches it past the
+  # 1-call cap, so a finding a subagent tries to post is never silently dropped.
+  always_execute_tools_per_turn: ["post_to_bbs"]
+  timeout: 1200                         # xhigh thinking on 27B is slow; avoid spurious idle timeouts
+  max_turns: 1200
+  subagent_max_turns: 200
+
+eval:
+  # BrowseComp grading prompt on Azure GPT-4.1 (LoHoSearch judge #1 of 2).
+  # azure.enabled above routes the judge through the Azure OpenAI deployment;
+  # override eval.judge_model to your own GPT-4.1 deployment name.
+  judge_model: "gpt-4-1-dev"
+  csv_path: arcticswarm/eval/data/lohosearch_v1.csv
+  datasets: [LOHOSEARCH_V1]
+  # 9 (not 18): the 0729 BCP run's throughput-safe fan-out for a single
+  # 27B endpoint — 16 subagents x parallel cases saturates vLLM and the
+  # resulting timeouts cost far more accuracy than the lost concurrency.
+  parallel: 9
+  timeout: 20000
+  checkpoint_interval: 1

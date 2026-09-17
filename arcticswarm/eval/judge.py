@@ -545,6 +545,43 @@ class LLMJudge:
         raw = self._call_llm(prompt)
         return self._parse_browsecomp_output(raw)
 
+    # ----- LoHoSearch mode --------------------------------------------------
+    def judge_lohosearch(
+        self,
+        question: str,
+        answer: str,
+        expected_answer: str,
+    ) -> QAJudgeResult:
+        """Run the LoHoSearch judge (arXiv 2606.12837).
+
+        The paper's protocol averages TWO gradings per question: the BrowseComp
+        grading prompt on GPT-4.1, and the SimpleQA grading prompt on
+        Qwen2.5-32B (the authors argue averaging complementary judges cancels
+        each one's over-strictness / over-leniency). We score the first half —
+        the BrowseComp prompt, here on Azure GPT-4.1 — as the canonical metric,
+        so our number is the GPT-4.1 component rather than the 2-judge mean.
+        LoHoSearch answers are short unique Wikipedia-style entity names, which
+        is exactly what the BrowseComp grader is built for, so we reuse both its
+        prompt and :meth:`_parse_browsecomp_output`.
+
+        Returns a :class:`QAJudgeResult`.
+        """
+        if not answer:
+            return QAJudgeResult(
+                correct=False,
+                comment="Agent produced no answer.",
+                raw_output="",
+            )
+
+        prompt = self._browsecomp_prompt.format(
+            question=question,
+            answer=answer,
+            expected_answer=expected_answer,
+        )
+
+        raw = self._call_llm(prompt)
+        return self._parse_browsecomp_output(raw)
+
     # ----- LLM call ---------------------------------------------------------
     def _call_llm(
         self,

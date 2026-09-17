@@ -155,6 +155,7 @@ CANONICAL_METRIC_ONLY_DATASETS = frozenset([
     "EVOBROWSECOMP_V1",  # EvoBrowseComp benchmark - uses specialized binary judge
     "SEAL0_V1",  # SEAL-0 (SealQA) benchmark - uses specialized A/B/C SimpleQA-style judge
     "KBROWSECOMP_V1",  # K-BrowseComp (Korean BrowseComp) - uses specialized binary yes/no judge
+    "LOHOSEARCH_V1",  # LoHoSearch (KG-generated long-horizon search) - BrowseComp-prompt judge
     "HYBRID_V1",  # Hybrid (search + SQL): SQL-result comparison or browsecomp text judge
 ])
 
@@ -1933,6 +1934,7 @@ def judge_result(
     For EVOBROWSECOMP_V1, we use the EvoBrowseComp judge (Final Answer / Explanation / Conclusion).
     For SEAL0_V1, we use the SEAL-0 judge (SimpleQA-style A/B/C grader from the SealQA authors).
     For KBROWSECOMP_V1, we use the K-BrowseComp judge (Korean-aware binary yes/no grader).
+    For LOHOSEARCH_V1, we use the LoHoSearch judge (BrowseComp grading prompt on GPT-4.1).
     The answer-only judge always runs alongside — it evaluates purely on
     final answer correctness (0/1/2), ignoring methodology and tool usage.
     """
@@ -1973,6 +1975,14 @@ def judge_result(
         # Use the K-BrowseComp judge (authors' verbatim Korean-aware grader;
         # correct: yes|no, tolerant of surface-form variants, disjunctions = no)
         result.qa_result = judge.judge_kbrowsecomp(
+            question=case.question,
+            answer=result.response_text,
+            expected_answer=case.reference_answer,
+        )
+    elif dataset == "LOHOSEARCH_V1":
+        # LoHoSearch grades with a 2-judge average (BrowseComp prompt on GPT-4.1
+        # + SimpleQA prompt on Qwen2.5-32B); we score the GPT-4.1 half.
+        result.qa_result = judge.judge_lohosearch(
             question=case.question,
             answer=result.response_text,
             expected_answer=case.reference_answer,
