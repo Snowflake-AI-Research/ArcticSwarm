@@ -16,8 +16,9 @@
 #
 # Run from a pod labeled dss=true so in-cluster DNS resolves the vLLM endpoint:
 #   kontrol in connect soyoung-cpu-in
-#   bash scripts/launch_lohosearch_qwen.sh              # full 544q
+#   bash scripts/launch_lohosearch_qwen.sh              # full 544q, fresh
 #   SMOKE=3 bash scripts/launch_lohosearch_qwen.sh      # 3-case smoke test
+#   RESUME=1 bash scripts/launch_lohosearch_qwen.sh     # 2nd+ pass, same OUT_DIR
 #
 # VENV: by default this sources activate_snowswarm.sh, which uv-syncs the env
 # from the hardcoded REPO=/code/users/soyoung/ArcticSwarm. When running out of a
@@ -33,6 +34,12 @@ SETTINGS="${SETTINGS:-/code/users/soyoung/snowswarm_settings_cortex.json}"
 PARALLEL="${PARALLEL:-9}"
 SMOKE="${SMOKE:-0}"
 VENV="${VENV:-}"
+# The 0729 BCP command carried eval.rebuild_from_trajectories / rerun_errors /
+# rerun_timeouts because it was a *resume* pass over an existing output dir. On
+# a fresh run they abort immediately ("No trajectories/ directory found"), so
+# they are opt-in here: RESUME=1 for the 2nd and later passes over the SAME
+# eval.output.
+RESUME="${RESUME:-0}"
 
 export ARCTICSWARM_SETTINGS_PATH="$SETTINGS"
 export SF_SKIP_WARNING_FOR_READ_PERMISSIONS_ON_CONFIG_FILE=true
@@ -52,6 +59,15 @@ if [[ "$SMOKE" != "0" ]]; then
   PARALLEL="$SMOKE"
   EXTRA+=("eval.limit=${SMOKE}")
   echo "### SMOKE MODE: ${SMOKE} cases -> ${OUT_DIR}"
+fi
+
+if [[ "$RESUME" != "0" ]]; then
+  EXTRA+=(
+    "eval.rebuild_from_trajectories=true"
+    "eval.rerun_errors=true"
+    "eval.rerun_timeouts=true"
+  )
+  echo "### RESUME MODE: rebuilding from existing trajectories in ${OUT_DIR}"
 fi
 
 echo "### LoHoSearch run: ${RUN_NAME}"
@@ -94,7 +110,4 @@ arcticswarm-eval \
   llm.model=qwen3.5-27b \
   llm.vllm_served_model_id=Qwen/Qwen3.5-27B \
   llm.disable_closed_model_fallback=true \
-  eval.rebuild_from_trajectories=true \
-  eval.rerun_errors=true \
-  eval.rerun_timeouts=true \
   "${EXTRA[@]}"
