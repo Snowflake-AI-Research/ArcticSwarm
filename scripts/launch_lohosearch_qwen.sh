@@ -18,6 +18,12 @@
 #   kontrol in connect soyoung-cpu-in
 #   bash scripts/launch_lohosearch_qwen.sh              # full 544q
 #   SMOKE=3 bash scripts/launch_lohosearch_qwen.sh      # 3-case smoke test
+#
+# VENV: by default this sources activate_snowswarm.sh, which uv-syncs the env
+# from the hardcoded REPO=/code/users/soyoung/ArcticSwarm. When running out of a
+# separate git worktree, point VENV at that worktree's own env instead so the
+# run imports the worktree's code and the primary checkout is left alone:
+#   VENV=/data-fast/soyoung/venvs/lohosearch bash scripts/launch_lohosearch_qwen.sh
 set -euo pipefail
 
 RUN_NAME="${RUN_NAME:-0917_lohosearch_qwen}"
@@ -26,10 +32,18 @@ ENDPOINT="${ENDPOINT:-http://soyoung-rebuttal-temp-oneday:7777/v1}"
 SETTINGS="${SETTINGS:-/code/users/soyoung/snowswarm_settings_cortex.json}"
 PARALLEL="${PARALLEL:-9}"
 SMOKE="${SMOKE:-0}"
+VENV="${VENV:-}"
 
 export ARCTICSWARM_SETTINGS_PATH="$SETTINGS"
 export SF_SKIP_WARNING_FOR_READ_PERMISSIONS_ON_CONFIG_FILE=true
-source /code/users/soyoung/activate_snowswarm.sh
+if [[ -n "$VENV" ]]; then
+  # shellcheck disable=SC1091
+  source "${VENV}/bin/activate"
+  echo "### venv: ${VENV} (worktree-local; activate_snowswarm.sh skipped)"
+else
+  # shellcheck disable=SC1091
+  source /code/users/soyoung/activate_snowswarm.sh
+fi
 
 # A smoke test wants a fresh, tiny, throwaway run — not the real output dir.
 EXTRA=()
