@@ -68,6 +68,15 @@ fi
 
 if [[ "$RESUME" != "0" ]]; then
   EXTRA+=(
+    # eval.resume is REQUIRED alongside rebuild_from_trajectories. cli.py loads
+    # the case list only when `not (rebuild_from_trajectories and not resume)` —
+    # it treats rebuild-without-resume as a standalone re-judge that needs no
+    # cases. Setting rebuild + rerun_errors WITHOUT resume therefore skips the
+    # load and then crashes dereferencing it:
+    #   UnboundLocalError: cannot access local variable 'cases'
+    # (The 0729 BCP command has the same three flags and no eval.resume, so it
+    # is exposed to this too.)
+    "eval.resume=true"
     "eval.rebuild_from_trajectories=true"
     "eval.rerun_errors=true"
     "eval.rerun_timeouts=true"
