@@ -5,9 +5,12 @@
 # three deliberate differences:
 #   1. LIVE WEB instead of the Cortex corpus. LoHoSearch has no static corpus,
 #      so web.corpus_backend=cortex / web.provider=corpus are DROPPED.
-#   2. Search providers pinned to BRAVE ONLY (web.search_provider_order).
-#      Tavily and Serper are out of credit, so leaving them in the chain only
-#      buys failed requests + latency on every Brave miss.
+#   2. Search providers restricted to BRAVE ONLY. Tavily and Serper are out of
+#      credit, so leaving them in the chain only buys failed requests + latency
+#      on every Brave miss. NOTE web.search_provider_order alone cannot do this
+#      — it only reorders, and WebSearchTool re-appends any omitted provider —
+#      so the real lever is a settings file with those two keys stripped
+#      (scripts/make_brave_only_settings.py). The order is set too, for intent.
 #   3. eval.csv_path / datasets / judge point at LOHOSEARCH_V1.
 #
 # Judge: Azure GPT-4.1 only (the BrowseComp grading prompt = LoHoSearch judge
@@ -30,7 +33,9 @@ set -euo pipefail
 RUN_NAME="${RUN_NAME:-0917_lohosearch_qwen}"
 OUT_DIR="${OUT_DIR:-/data/soyoung/important/arcticswarm/${RUN_NAME}}"
 ENDPOINT="${ENDPOINT:-http://soyoung-rebuttal-temp-oneday:7777/v1}"
-SETTINGS="${SETTINGS:-/code/users/soyoung/snowswarm_settings_cortex.json}"
+# Brave-only settings (Tavily/Serper keys stripped — see
+# scripts/make_brave_only_settings.py for why order alone can't restrict them).
+SETTINGS="${SETTINGS:-/code/users/soyoung/snowswarm_settings_brave_only.json}"
 PARALLEL="${PARALLEL:-9}"
 SMOKE="${SMOKE:-0}"
 VENV="${VENV:-}"
