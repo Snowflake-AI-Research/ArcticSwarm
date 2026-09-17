@@ -12,6 +12,13 @@
 #      eval.output and rebuilds from trajectories, so finished cases aren't
 #      redone.
 #
+# POD REQUIREMENT: run this on a GPU pod (2 TB / 184 CPU), NOT on
+# soyoung-cpu-in. That pod's container cgroup caps memory at 7.6 GiB, and 3
+# concurrent LoHoSearch cases x 16 subagents blew straight through it — the
+# eval was SIGKILLed mid-case with cgroup memory.events oom_kill=8 and
+# memory.peak above memory.max. Its 2 CPUs were also the reason a single case
+# took ~45 min.
+#
 # Run detached on the pod:
 #   cd /code/users/soyoung/ArcticSwarm_lohosearch
 #   nohup bash scripts/drive_lohosearch_0917.sh > /data/soyoung/important/arcticswarm/_logs/lohosearch_driver.log 2>&1 &
@@ -47,20 +54,13 @@ fi
 JUDGED=$("$VENV/bin/python" - "$SMOKE_DIR/report.json" <<'PY'
 import json, sys
 r = json.load(open(sys.argv[1]))
-# Walk the report for per-case QA verdicts without assuming an exact schema.
-n = 0
-def walk(o):
-    global n
-    if isinstance(o, dict):
-        if "correct" in o and isinstance(o.get("correct"), bool):
-            n += 1
-        for v in o.values():
-            walk(v)
-    elif isinstance(o, list):
-        for v in o:
-            walk(v)
-walk(r)
-print(n)
+# The per-case verdict field is `judge_correct` (NOT `correct` — an earlier
+# version of this gate looked for the latter, found nothing, and wrongly
+# aborted a healthy run). Count cases that carry a non-null verdict.
+cases = r.get("per_case") or []
+if isinstance(cases, dict):
+    cases = list(cases.values())
+print(sum(1 for c in cases if isinstance(c, dict) and c.get("judge_correct") is not None))
 PY
 )
 say "smoke report.json found; judged verdicts = ${JUDGED:-0}"
