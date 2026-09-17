@@ -36,9 +36,15 @@ mkdir -p "$LOGS"
 say() { echo "[driver $(date -u +%H:%M:%SZ)] $*"; }
 
 # --- 1. wait for the smoke run --------------------------------------------
+# Match THIS benchmark's eval only. A bare "arcticswarm-eval" pattern also
+# matches unrelated evals sharing the pod (a BrowseComp-Plus run at parallel=20
+# was live here), so the driver waited on someone else's job and never
+# proceeded. The bracket keeps the pattern from matching this script's own
+# command line.
+EVAL_PAT="conf/bench/lohosearch[_]qwen.yaml"
 say "waiting for smoke run to finish"
-while pgrep -f "arcticswarm-eval" >/dev/null 2>&1; do sleep 60; done
-say "no eval process running"
+while pgrep -f "$EVAL_PAT" >/dev/null 2>&1; do sleep 60; done
+say "no lohosearch eval process running"
 
 # --- 2. gate on the smoke result ------------------------------------------
 if [[ ! -f "$SMOKE_DIR/report.json" ]]; then
