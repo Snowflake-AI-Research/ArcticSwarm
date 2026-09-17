@@ -137,8 +137,39 @@ extraction rides **Jina Reader** plus the local OpenDataLoader/docling path.
 
 ## Cluster setup
 
-Pod `soyoung-dev-cpu-in-0-hn8j9` (ns `mltraining-dev`), reachable as
-`kontrol in connect soyoung-cpu-in`.
+**Pod: `soyoung-rebuttal-temp-oneday-1-0-f2vpn`** (ns `mltraining-dev`).
+
+The first attempt ran on `soyoung-dev-cpu-in` as originally asked, and **that pod
+cannot host this eval**: its container cgroup caps memory at **7.6 GiB**
+(`memory.max` 8137830400) with 2 CPUs. Three concurrent cases × 16 subagents
+exceeded it and the eval was SIGKILLed mid-case — `memory.events oom_kill 8`,
+`memory.peak` 8144232448 > `memory.max`. Its 2 CPUs also explain the ~45 min per
+case. The GPU pods have **2.04 TB / 184 CPUs**, so the run moved there; the eval
+client is I/O bound, so co-locating it with a serving vLLM is fine (that pod was
+already serving at load 10/184).
+
+Check before choosing a pod:
+```bash
+kubectl get pods -n mltraining-dev -o custom-columns=\
+'NAME:.metadata.name,MEM:.spec.containers[0].resources.limits.memory,CPU:.spec.containers[0].resources.limits.cpu'
+```
+
+Two things that made this OOM hard to read:
+
+- **It masquerades as a scoring failure.** `kubectl get pod` reports
+  `restarts=0` and an empty `lastState.terminated.reason` — the *container*
+  never died, only the process inside it. The evidence is `Killed` in the
+  launcher's stdout plus the cgroup counters.
+- **`report.json` is also written mid-run as a checkpoint**, not only at the
+  end, so its presence does not mean the run finished. A completion check must
+  also confirm no eval process is alive. The first driver aborted on exactly
+  this: it read the checkpointed report of an OOM-killed run, found no verdicts,
+  and reported "scoring is broken" when scoring had simply never been reached.
+  (It also looked for a key named `correct`; the real field is
+  `per_case[].judge_correct`.) Both fixed.
+
+`/code` is shared Lustre across pods, so the worktree is visible from any of
+them — only the `/data-fast` venv has to be rebuilt per pod.
 
 Endpoint verified from that pod — `GET http://soyoung-rebuttal-temp-oneday:7777/v1/models`
 returns served id `Qwen/Qwen3.5-27B`, `max_model_len` 262144, matching the
