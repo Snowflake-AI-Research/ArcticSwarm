@@ -27,7 +27,9 @@ RUN_NAME=${RUN_NAME:-0917_lohosearch_qwen}
 OUT_DIR=$ROOT/$RUN_NAME
 LOGS=$ROOT/_logs
 VENV=${VENV:-/data-fast/soyoung/venvs/lohosearch}
-ENDPOINT=${ENDPOINT:-http://soyoung-rebuttal-1:7777/v1}
+# May be a COMMA-SEPARATED list: runner.py's _parse_endpoint_spec splits it and
+# builds an EndpointPool that spreads cases least-connections across them.
+ENDPOINT=${ENDPOINT:-http://soyoung-rebuttal-1:7777/v1,http://soyoung-glm:7777/v1}
 EXPECTED=${EXPECTED:-544}
 MAX_RESUMES=${MAX_RESUMES:-12}
 # Match THIS benchmark's eval only — other evals share these pods.
@@ -74,10 +76,15 @@ PY
     exit 1
   fi
 
-  # Endpoint may have died with its pod; wait for it rather than burning retries.
+  # Endpoints may have died with their pods; wait for at least one rather than
+  # burning retries. ENDPOINT can be a comma-separated list, so probe each.
   for _ in $(seq 1 60); do
-    curl -s -m 10 "${ENDPOINT}/models" >/dev/null 2>&1 && break
-    say "endpoint ${ENDPOINT} unreachable — waiting"
+    live=0
+    for u in ${ENDPOINT//,/ }; do
+      curl -s -m 10 "${u}/models" >/dev/null 2>&1 && live=$((live+1))
+    done
+    [[ "$live" -gt 0 ]] && { say "$live endpoint(s) reachable"; break; }
+    say "no endpoint of ${ENDPOINT} reachable — waiting"
     sleep 60
   done
 
