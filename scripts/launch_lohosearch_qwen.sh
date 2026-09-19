@@ -124,4 +124,9 @@ arcticswarm-eval \
   llm.model=qwen3.5-27b \
   llm.vllm_served_model_id=Qwen/Qwen3.5-27B \
   llm.disable_closed_model_fallback=true \
-  "${EXTRA[@]}"
+  "${EXTRA[@]}" \
+  "$@"
+# "$@" forwards any extra dot-notation overrides straight through, e.g.
+#   bash scripts/launch_lohosearch_qwen.sh web.disable_brave_or_fallback=false
+# Without it, extra args were silently DROPPED — the eval ran with the intended
+# override missing and nothing in the log said so.
