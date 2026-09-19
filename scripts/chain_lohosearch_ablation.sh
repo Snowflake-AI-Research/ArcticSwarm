@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
-# Wait for the main LoHoSearch run to finish, then run the isolation-off /
-# review-off ablation on the same 3-endpoint pool.
+# Launch the isolation-off / review-off ablation as soon as the main LoHoSearch
+# run has fewer than LAUNCH_AT_REMAINING cases left — i.e. deliberately OVERLAP
+# the tail of the main run rather than waiting for it to fully drain.
 #
-# Ordering matters: both runs share the same three vLLM endpoints, so they must
-# not overlap or they would contend and neither number would be comparable to
-# the other. This chains them.
+# Why overlap: at parallel=30 the main run's last ~15 cases occupy only ~15 of
+# its 30 slots, and the final stragglers can each run to the 20000s ceiling. That
+# tail is mostly idle capacity on the three endpoints. Starting the ablation then
+# costs little contention (~15 + 30 concurrent cases, comparable to the
+# parallel=48 the endpoints already absorbed with 0 queuing) and saves hours.
+#
+# Caveat this creates: the main run's FINAL few cases complete while the ablation
+# is ramping, so those specific cases see slightly more contention than the rest.
+# With <15 of 544 affected that is immaterial to the headline, but it is why the
+# threshold is small rather than, say, 100.
 #
 # COMPLETION TEST for the main run: report.json doubles as a mid-run CHECKPOINT,
 # so its presence proves nothing. A finished report has no "checkpoint" key and
@@ -24,6 +32,8 @@ VENV=${VENV:-/data-fast/soyoung/venvs/lohosearch}
 ENDPOINT=${ENDPOINT:-http://soyoung-rebuttal-1:7777/v1,http://soyoung-glm:7777/v1,http://soyoung-rebuttal:7777/v1}
 PARALLEL=${PARALLEL:-30}
 EXPECTED=${EXPECTED:-544}
+# Fire the ablation once the main run has fewer than this many cases left.
+LAUNCH_AT_REMAINING=${LAUNCH_AT_REMAINING:-15}
 EVAL_PAT="conf/bench/lohosearch[_]qwen.yaml"
 
 say() { echo "[chain $(date -u +%H:%M:%SZ)] $*"; }
@@ -59,17 +69,32 @@ print(f"{sys.argv[2]}: {ok}/{judged} = {100.0*ok/max(judged,1):.2f}%  "
 PY
 }
 
-say "waiting for main run $MAIN_RUN to complete"
+remaining() {  # echoes cases left in the main run, or "" if unreadable
+  "$VENV/bin/python" - "$MAIN_DIR/report.json" "$EXPECTED" <<'PY' 2>/dev/null
+import json, sys
+try:
+    r = json.load(open(sys.argv[1]))
+except Exception:
+    raise SystemExit
+print(max(0, int(sys.argv[2]) - len(r.get("per_case") or [])))
+PY
+}
+
+say "waiting until main run $MAIN_RUN has < $LAUNCH_AT_REMAINING cases left"
 while true; do
-  if ! pgrep -f "$EVAL_PAT" >/dev/null 2>&1 && is_complete; then break; fi
+  # Complete is also a valid trigger — don't hang if the run finishes outright.
+  if ! pgrep -f "$EVAL_PAT" >/dev/null 2>&1 && is_complete; then
+    say "main run COMPLETE"; break
+  fi
+  rem=$(remaining)
+  if [[ -n "$rem" && "$rem" -lt "$LAUNCH_AT_REMAINING" ]]; then
+    say "main run has $rem case(s) left (< $LAUNCH_AT_REMAINING) — launching ablation CONCURRENTLY"
+    break
+  fi
+  [[ -n "$rem" ]] && say "main run: $rem case(s) remaining"
   sleep 300
 done
-say "main run COMPLETE"
-summarize "$MAIN_DIR/report.json" "MAIN (iso+review ON)"
-
-# The main run's own watchdog exits on completion; make sure nothing lingers
-# before we start competing for the same endpoints.
-while pgrep -f "$EVAL_PAT" >/dev/null 2>&1; do sleep 60; done
+summarize "$MAIN_DIR/report.json" "MAIN so far (iso+review ON)"
 
 say "launching ablation $ABL_RUN (isolation off / review off), parallel=$PARALLEL"
 cd /code/users/soyoung/ArcticSwarm_lohosearch || exit 1
