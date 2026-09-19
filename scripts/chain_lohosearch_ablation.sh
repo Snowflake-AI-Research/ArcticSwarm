@@ -3,11 +3,12 @@
 # run has fewer than LAUNCH_AT_REMAINING cases left — i.e. deliberately OVERLAP
 # the tail of the main run rather than waiting for it to fully drain.
 #
-# Why overlap: at parallel=30 the main run's last ~15 cases occupy only ~15 of
-# its 30 slots, and the final stragglers can each run to the 20000s ceiling. That
-# tail is mostly idle capacity on the three endpoints. Starting the ablation then
-# costs little contention (~15 + 30 concurrent cases, comparable to the
-# parallel=48 the endpoints already absorbed with 0 queuing) and saves hours.
+# Why overlap: the main run's last ~15 cases occupy only ~15 of its 30 slots, and
+# the final stragglers can each run to the 20000s ceiling. That tail is mostly
+# idle capacity on the three endpoints. Starting the ablation (parallel=48) then
+# costs a short window of ~15 + 48 concurrent cases and saves hours. The pool
+# already absorbed parallel=48 with zero queuing, so only that brief overlap is
+# above proven-safe load — worth watching num_requests_waiting while it lasts.
 #
 # Caveat this creates: the main run's FINAL few cases complete while the ablation
 # is ramping, so those specific cases see slightly more contention than the rest.
@@ -30,7 +31,7 @@ ABL_RUN=${ABL_RUN:-0919_lohosearch_isoreview_off}
 LOGS=$ROOT/_logs
 VENV=${VENV:-/data-fast/soyoung/venvs/lohosearch}
 ENDPOINT=${ENDPOINT:-http://soyoung-rebuttal-1:7777/v1,http://soyoung-glm:7777/v1,http://soyoung-rebuttal:7777/v1}
-PARALLEL=${PARALLEL:-30}
+PARALLEL=${PARALLEL:-48}
 EXPECTED=${EXPECTED:-544}
 # Fire the ablation once the main run has fewer than this many cases left.
 LAUNCH_AT_REMAINING=${LAUNCH_AT_REMAINING:-15}

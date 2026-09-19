@@ -41,14 +41,14 @@
 # point: it isolates how much of the accuracy those gates actually buy.
 #
 # Usage:
-#   PARALLEL=30 bash scripts/launch_lohosearch_isoreview_off.sh
+#   PARALLEL=48 bash scripts/launch_lohosearch_isoreview_off.sh
 set -euo pipefail
 
 RUN_NAME="${RUN_NAME:-0919_lohosearch_isoreview_off}"
 OUT_DIR="${OUT_DIR:-/data/soyoung/important/arcticswarm/${RUN_NAME}}"
 ENDPOINT="${ENDPOINT:-http://soyoung-rebuttal-1:7777/v1,http://soyoung-glm:7777/v1,http://soyoung-rebuttal:7777/v1}"
 SETTINGS="${SETTINGS:-/code/users/soyoung/snowswarm_settings_brave_only.json}"
-PARALLEL="${PARALLEL:-30}"
+PARALLEL="${PARALLEL:-48}"
 VENV="${VENV:-/data-fast/soyoung/venvs/lohosearch}"
 RESUME="${RESUME:-0}"
 
