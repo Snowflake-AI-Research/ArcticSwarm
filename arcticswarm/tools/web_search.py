@@ -70,8 +70,16 @@ class WebSearchTool(BaseTool):
         neardup_hard_stop: int | None = None,
         search_cache: Any | None = None,
         search_cache_read: bool = True,
+        disable_brave_or_fallback: bool = True,
     ) -> None:
         self._api_key = api_key.strip()
+        # Stage-2 Brave OR-unquote retry, ported back from snowswarm (where it
+        # defaulted to ENABLED). NOTE: the default here is True = retry DISABLED,
+        # so existing ArcticSwarm runs keep byte-identical behavior. Pass
+        # web.disable_brave_or_fallback=false to re-enable. Matters most when
+        # Tavily/Serper are dead: without the retry, a quoted query that Brave
+        # answers with 0 results falls straight through to unusable providers.
+        self._disable_brave_or_fallback = disable_brave_or_fallback
         self._serper_api_key = (serper_api_key or "").strip()
         self._tavily_api_key = (tavily_api_key or "").strip()
         self._judge = judge
@@ -560,7 +568,7 @@ class WebSearchTool(BaseTool):
         country: str | None,
         safe: str,
     ) -> ToolResult | None:
-        """Run the Brave stage (exact-query search).
+        """Run the Brave stage (exact query, then optional OR-unquote retry).
 
         Returns a ToolResult when Brave yields usable results, or None
         when Brave returns nothing (the caller then tries other providers).
@@ -574,7 +582,37 @@ class WebSearchTool(BaseTool):
             self._record_search(q, "brave", len(brave_results), scores)
             return self._format_results(brave_results, q, capped, source="brave", scores=scores)
 
+        # Stage 2: OR-unquote retry (one extra Brave call). Recovers the common
+        # case where an over-quoted query matches nothing verbatim.
+        if not self._disable_brave_or_fallback:
+            or_results = self._brave_or_unquote_retry(q, capped, country, safe)
+            if or_results:
+                scores = self._score_results(q, or_results)
+                self._total_searches += 1
+                self._brave_searches += 1
+                self._record_search(q, "brave_or_rewrite", len(or_results), scores)
+                return self._format_results(
+                    or_results, q, capped, source="brave_or_rewrite", scores=scores
+                )
+
         return None
+
+    def _brave_or_unquote_retry(
+        self,
+        query: str,
+        count: int,
+        country: str | None,
+        safesearch: str,
+    ) -> list[dict[str, Any]] | None:
+        """Single-call retry: OR quoted phrases together + unquoted keywords.
+
+        Ported from snowswarm. Returns normalized results or ``None``.
+        """
+        rewritten = self._build_or_unquote_rewrite(query)
+        if not rewritten:
+            return None
+        logger.info("Brave OR-unquote retry: %s", rewritten[:120])
+        return self._search_brave(rewritten, count, country, safesearch)
 
     def _serper_stage(
         self,

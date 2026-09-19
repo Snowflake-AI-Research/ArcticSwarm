@@ -233,6 +233,9 @@ class ToolFactory:
             neardup_hard_stop=getattr(self.config, "search_neardup_hard_stop", 40),
             search_cache=_search_cache,
             search_cache_read=getattr(self.config, "search_cache_read", True),
+            disable_brave_or_fallback=getattr(
+                self.config, "disable_brave_or_fallback", True
+            ),
         )
 
     def _make_web_fetch(self) -> BaseTool | None:

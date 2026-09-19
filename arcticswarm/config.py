@@ -327,6 +327,7 @@ class ArcticswarmConfig:
     # Mutually exclusive with disable_bbs_isolation — setting both is rejected
     # at config load (run_config.to_arcticswarm_config).
     force_bbs_isolation: bool = False
+    fixed_bbs_isolation_tasks: int | None = None
     # Communication channels for swarm mode (list of "bbs", "dm", and/or "duo").
     swarm_comm: list[str] = field(default_factory=lambda: ["bbs"])
     # When True and DM is enabled, the orchestrator uses an event-driven
@@ -469,6 +470,16 @@ class ArcticswarmConfig:
     # churning small model harder, at the cost of possibly truncating a legit
     # broad sweep.
     search_neardup_hard_stop: int = 40
+
+    # When True, skip the Stage-2 Brave OR-unquote retry and fall straight to
+    # the next provider after the initial Brave query returns nothing.
+    # Ported back from snowswarm, where this defaulted to False (retry ON).
+    # Here it defaults to True (retry OFF) so pre-existing ArcticSwarm runs keep
+    # byte-identical behavior — set web.disable_brave_or_fallback=false to
+    # re-enable. Worth enabling when Tavily/Serper are unusable, since the
+    # provider order silently re-appends them and an over-quoted query that
+    # Brave cannot match verbatim would otherwise fall through to dead providers.
+    disable_brave_or_fallback: bool = True
 
     # When True, collapse duplicate tool-call RESULTS in the outbound LLM
     # history: for each web_search / web_fetch / pdf_read signature issued more

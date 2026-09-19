@@ -249,6 +249,7 @@ class WebConfig:
     # Scoped per task; reviewer/reasoning tasks still read the BBS. Ignored
     # when disable_bbs_isolation is also set.
     force_bbs_isolation: bool = False
+    fixed_bbs_isolation_tasks: int | None = None
     # Seamless search-result cache (see arcticswarm/tools/search_cache.py).
     # When enabled with a built DB path, web_search serves cached raw results
     # (source scorer always re-runs) and write-through-fills live misses.
@@ -283,6 +284,10 @@ class WebConfig:
     # stop (only when search_repeat_guard_hard_stop is on). 40 = WebSearchTool
     # default; lower (e.g. 12) to bite a churning small model harder.
     search_neardup_hard_stop: int = 40
+    # Skip the Stage-2 Brave OR-unquote retry (ported back from snowswarm).
+    # Default True = retry OFF, preserving existing ArcticSwarm behavior; set
+    # false to re-enable (recommended when Tavily/Serper are unusable).
+    disable_brave_or_fallback: bool = True
     # Collapse duplicate tool-call RESULTS in the outbound LLM history (the
     # bulky body of all-but-last-N identical web_search/web_fetch/pdf_read
     # results is stubbed). Saves context on models that re-issue the same call.
@@ -631,6 +636,20 @@ class RunConfig:
         config.disable_source_scorer = self.web.disable_source_scorer
         config.disable_bbs_isolation = self.web.disable_bbs_isolation
         config.force_bbs_isolation = self.web.force_bbs_isolation
+        config.fixed_bbs_isolation_tasks = self.web.fixed_bbs_isolation_tasks
+        if self.web.fixed_bbs_isolation_tasks is not None:
+            if (
+                type(self.web.fixed_bbs_isolation_tasks) is not int
+                or self.web.fixed_bbs_isolation_tasks < 0
+            ):
+                raise ValueError("web.fixed_bbs_isolation_tasks must be a nonnegative integer or null.")
+            if self.web.disable_bbs_isolation or self.web.force_bbs_isolation:
+                raise ValueError(
+                    "web.fixed_bbs_isolation_tasks cannot be combined with "
+                    "web.disable_bbs_isolation or web.force_bbs_isolation."
+                )
+            if not self.swarm.enabled or self.swarm.comm != ["bbs"]:
+                raise ValueError("Fixed BBS scheduling requires swarm.enabled=true and swarm.comm=[bbs].")
         if self.web.disable_bbs_isolation and self.web.force_bbs_isolation:
             # Contradictory ablation flags: disable => never isolate,
             # force => always isolate browsing. Fail loud rather than
@@ -642,6 +661,7 @@ class RunConfig:
             )
         config.search_repeat_guard_hard_stop = self.web.search_repeat_guard_hard_stop
         config.search_neardup_hard_stop = self.web.search_neardup_hard_stop
+        config.disable_brave_or_fallback = self.web.disable_brave_or_fallback
         config.collapse_duplicate_tool_history = self.web.collapse_duplicate_tool_history
         config.dup_history_keep_last = self.web.dup_history_keep_last
         # Cortex web-search provider account: a non-empty web.cortex_account
